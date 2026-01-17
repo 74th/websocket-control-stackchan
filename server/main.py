@@ -21,15 +21,18 @@ BASE_DIR = Path(__file__).resolve().parent
 RECORDINGS_DIR = BASE_DIR / "recordings"
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
-WS_HEADER_FMT = "<4sBBHIHH"  # kind, msg_type, reserved, seq, sample_rate, channels, payload_bytes
+WS_HEADER_FMT = "<BBBHH"  # kind, msg_type, reserved, seq, payload_bytes
 WS_HEADER_SIZE = struct.calcsize(WS_HEADER_FMT)
-WS_KIND_PCM1 = b"PCM1"
+WS_KIND_PCM = 1
+WS_KIND_WAV = 2
 WS_MSG_START = 1
 WS_MSG_DATA = 2
 WS_MSG_END = 3
 
-# Downlink: simple WAV chunk header (kind + uint32 length + data)
-DOWN_KIND_WAV1 = b"WAV1"
+SAMPLE_RATE_HZ = 16000
+CHANNELS = 1
+SAMPLE_WIDTH = 2  # bytes
+
 DOWN_WAV_CHUNK = 4096  # bytes per WebSocket frame for synthesized audio
 
 def create_voicevox_client() -> VVClient:
@@ -67,9 +70,8 @@ async def health() -> dict[str, str]:
 async def websocket_audio(ws: WebSocket):
     await ws.accept()
     pcm_buffer = bytearray()
-    current_sample_rate: int | None = None
-    current_channels: int | None = None
     streaming = False
+    down_seq = 0
     try:
         while True:
             message = await ws.receive_bytes()
@@ -77,14 +79,11 @@ async def websocket_audio(ws: WebSocket):
                 await ws.close(code=1003, reason="header too short")
                 return
 
-            kind, msg_type, _reserved, _seq, sample_rate, channels, payload_bytes = struct.unpack(
+            kind, msg_type, _reserved, _seq, payload_bytes = struct.unpack(
                 WS_HEADER_FMT, message[:WS_HEADER_SIZE]
             )
-            if kind != WS_KIND_PCM1:
+            if kind != WS_KIND_PCM:
                 await ws.close(code=1003, reason="unsupported kind")
-                return
-            if sample_rate <= 0 or channels <= 0:
-                await ws.close(code=1003, reason="invalid header values")
                 return
 
             payload = message[WS_HEADER_SIZE:]
@@ -92,11 +91,8 @@ async def websocket_audio(ws: WebSocket):
                 await ws.close(code=1003, reason="payload length mismatch")
                 return
 
-            sample_width = 2
             if msg_type == WS_MSG_START:
                 pcm_buffer = bytearray()
-                current_sample_rate = sample_rate
-                current_channels = channels
                 streaming = True
                 continue
 
@@ -104,10 +100,7 @@ async def websocket_audio(ws: WebSocket):
                 if not streaming:
                     await ws.close(code=1003, reason="data received before start")
                     return
-                if sample_rate != current_sample_rate or channels != current_channels:
-                    await ws.close(code=1003, reason="mismatched audio params")
-                    return
-                if payload_bytes % (sample_width * channels) != 0:
+                if payload_bytes % (SAMPLE_WIDTH * CHANNELS) != 0:
                     await ws.close(code=1003, reason="invalid pcm chunk length")
                     return
                 pcm_buffer.extend(payload)
@@ -117,40 +110,34 @@ async def websocket_audio(ws: WebSocket):
                 if not streaming:
                     await ws.close(code=1003, reason="end received before start")
                     return
-                if sample_rate != current_sample_rate or channels != current_channels:
-                    await ws.close(code=1003, reason="mismatched audio params on end")
-                    return
-                if payload_bytes % (sample_width * channels) != 0:
+                if payload_bytes % (SAMPLE_WIDTH * CHANNELS) != 0:
                     await ws.close(code=1003, reason="invalid pcm tail length")
                     return
                 pcm_buffer.extend(payload)
 
-                if len(pcm_buffer) == 0 or len(pcm_buffer) % (sample_width * channels) != 0:
+                if len(pcm_buffer) == 0 or len(pcm_buffer) % (SAMPLE_WIDTH * CHANNELS) != 0:
                     await ws.close(code=1003, reason="invalid accumulated pcm length")
                     return
 
-                assert current_sample_rate is not None
-                assert current_channels is not None
-
-                frames = len(pcm_buffer) // (sample_width * channels)
-                duration_seconds = frames / float(current_sample_rate)
+                frames = len(pcm_buffer) // (SAMPLE_WIDTH * CHANNELS)
+                duration_seconds = frames / float(SAMPLE_RATE_HZ)
 
                 timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
                 filename = f"rec_ws_{timestamp}.wav"
                 filepath = RECORDINGS_DIR / filename
 
                 with wave.open(str(filepath), "wb") as wav_fp:
-                    wav_fp.setnchannels(current_channels)
-                    wav_fp.setsampwidth(sample_width)
-                    wav_fp.setframerate(current_sample_rate)
+                    wav_fp.setnchannels(CHANNELS)
+                    wav_fp.setsampwidth(SAMPLE_WIDTH)
+                    wav_fp.setframerate(SAMPLE_RATE_HZ)
                     wav_fp.writeframes(pcm_buffer)
 
                 await ws.send_json(
                     {
                         "text": f"Saved as {filename}",
-                        "sample_rate": current_sample_rate,
+                        "sample_rate": SAMPLE_RATE_HZ,
                         "frames": frames,
-                        "channels": current_channels,
+                        "channels": CHANNELS,
                         "duration_seconds": round(duration_seconds, 3),
                         "path": f"recordings/{filename}",
                     }
@@ -161,7 +148,7 @@ async def websocket_audio(ws: WebSocket):
                 audio = speech.RecognitionAudio(content=bytes(pcm_buffer))
                 config = speech.RecognitionConfig(
                     encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-                    sample_rate_hertz=16000,
+                    sample_rate_hertz=SAMPLE_RATE_HZ,
                     language_code="ja-JP",
                 )
                 response = sst_client.recognize(config=config, audio=audio)
@@ -173,8 +160,6 @@ async def websocket_audio(ws: WebSocket):
 
                 streaming = False
                 pcm_buffer = bytearray()
-                current_sample_rate = None
-                current_channels = None
 
                 voice_text = transcript
                 if not transcript:
@@ -187,15 +172,48 @@ async def websocket_audio(ws: WebSocket):
                         wav_bytes = await audio_query.synthesis(speaker=29)
                     logger.info("VOICEVOX synthesis succeeded, sending back WAV")
 
-                    total = len(wav_bytes)
+                    # START (no payload): begin streaming
+                    start_hdr = struct.pack(
+                        WS_HEADER_FMT,
+                        WS_KIND_WAV,
+                        WS_MSG_START,
+                        0,
+                        down_seq,
+                        0,
+                    )
+                    await ws.send_bytes(start_hdr)
+                    down_seq += 1
+
+                    # DATA chunks (streaming)
                     offset = 0
+                    total = len(wav_bytes)
                     while offset < total:
                         chunk = wav_bytes[offset : offset + DOWN_WAV_CHUNK]
-                        header = DOWN_KIND_WAV1 + struct.pack("<II", total, offset)
-                        await ws.send_bytes(header + chunk)
+                        data_hdr = struct.pack(
+                            WS_HEADER_FMT,
+                            WS_KIND_WAV,
+                            WS_MSG_DATA,
+                            0,
+                            down_seq,
+                            len(chunk),
+                        )
+                        await ws.send_bytes(data_hdr + chunk)
+                        down_seq += 1
                         offset += len(chunk)
 
-                    logger.info("Sent synthesized WAV back to client in chunks")
+                    # END (no payload)
+                    end_hdr = struct.pack(
+                        WS_HEADER_FMT,
+                        WS_KIND_WAV,
+                        WS_MSG_END,
+                        0,
+                        down_seq,
+                        0,
+                    )
+                    await ws.send_bytes(end_hdr)
+                    down_seq += 1
+
+                    logger.info("Sent synthesized WAV back to client via WS streaming protocol")
                 except Exception as exc:  # pragma: no cover
                     await ws.send_json({"error": f"voicevox synthesis failed: {exc}"})
 

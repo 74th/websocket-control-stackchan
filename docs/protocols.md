@@ -1,56 +1,68 @@
-# プロトコル仕様
+<!--
+コーディングエージェント向け指示: このディレクトリにはプロトコルのみを記述し、CPP、Pythonの実装コードの例を記述する必要はありません。どんなプロトコルが実装されているか確認するために用います。
+-->
 
-このドキュメントは、本リポジトリで使われている WebSocket ベースのバイナリプロトコルについて日本語で説明します。
+# プロトコル仕様（1 バイト kind / 共通ヘッダ）
 
-主に CoreS3（ESP32）とサーバー間でやり取りされる音声ストリーミングおよびダウンロード用のメッセージを定義します。
+このドキュメントは、本リポジトリで使われている WebSocket ベースのバイナリプロトコルについて日本語で説明します。CoreS3（ESP32）とサーバー間の送受信で共通のヘッダを使います。
 
-## 音声ストリーム出力（PCM1 / WAV1）
+## 共通ヘッダ: WsAudioHeader
 
-### 概要
-
-- 方向: クライアント -> サーバ
-- 音声ストリーム: PCM16LE（モノラル）を WebSocket のバイナリメッセージで送受信します。
-- 主要プロトコル種別:
-  - `PCM1`: クライアント（CoreS3）→サーバーの音声アップロード用ヘッダ
-  - `WAV1`: サーバー→クライアントの TTS / WAV チャンク配信用ヘッダ（簡易説明）
-
-### PCM1 ヘッダ（WsAudioHeader）
-
-C++ での構造体定義（`include/protocols.hpp` に保持）:
+`include/protocols.hpp` に定義されるヘッダ（packed, LE）:
 
 ```cpp
-struct __attribute__((packed)) WsAudioHeader
-{
-  char kind[4];        // "PCM1"
-  uint8_t messageType; // MessageType (1=START, 2=DATA, 3=END)
-  uint8_t reserved;    // 予約領域（0）
-  uint16_t seq;        // シーケンス番号（リトルエンディアン）
-  uint32_t sampleRate; // サンプルレート（例: 16000）
-  uint16_t channels;   // チャンネル数（通常 1）
-  uint16_t payloadBytes; // ヘッダの直後に続く PCM バイト数
+enum class MessageKind : uint8_t {
+  AudioPcm = 1, // クライアント→サーバ（PCM16LE）
+  AudioWav = 2, // サーバ→クライアント（WAV バイト列）
+};
+
+enum class MessageType : uint8_t {
+  START = 1,
+  DATA = 2,
+  END  = 3,
+};
+
+struct __attribute__((packed)) WsAudioHeader {
+  uint8_t  kind;         // MessageKind
+  uint8_t  messageType;  // MessageType
+  uint8_t  reserved;     // 0（将来のフラグ用）
+  uint16_t seq;          // シーケンス番号
+  uint16_t payloadBytes; // ヘッダ直後に続くバイト数
 };
 ```
 
-- バイトオーダー: リトルエンディアンを前提とします。
-- `messageType`:
-  - 1 (START): 録音・送信開始を示します。通常 `payloadBytes` は 0。
-  - 2 (DATA): PCM データが続くことを示します。`payloadBytes` はデータ長バイト数。
-  - 3 (END): 録音・送信終了を示します。通常 `payloadBytes` は 0。
+- バイトオーダー: リトルエンディアン。
+- `seq`: 送信側がインクリメント。整合チェックに使用。
+- `payloadBytes`: ヘッダ直後に続く生データ長（最大 65535）。
 
-#### 実装上の注意
+### Uplink: kind = AudioPcm (1)
 
-- `kind` フィールドは 4 バイト固定の ASCII マジックです。現在は "PCM1" を使いますが、将来別種のペイロード（たとえば別コーデックや制御メッセージ）を導入することを想定して他の値を追加できます。
-- `seq` は送信側でインクリメントします。これによりパケットの並び確認や再送判定等に利用できます。
-- `payloadBytes` はヘッダ直後に続く生の PCM バイト数（PCM16LE の場合は 2 の倍数）です。
+- 方向: クライアント -> サーバ
+- フォーマット: PCM16LE モノラル、サンプルレート固定 16 kHz（チャンネル数 1）。
+- メッセージの流れ: START (通常 payload 0) → DATA 複数回 → END (payload 0 または残りを含む)。
+- サーバー側は固定パラメータ（16 kHz / ch=1）として WAV に保存し、STT に渡す。
 
-### WAV1（サーバー→クライアント、TTS 送信）の簡易仕様
+### Downlink: kind = AudioWav (2)
 
-サーバーは分割された WAV バイナリをクライアントに送り返すときに、`WAV1` マジックを先頭に置いた独自チャンクメッセージを送ります（`src/main.cpp` の WS BIN ハンドラ参照）。
+- 方向: サーバ -> クライアント
+- コンテンツ: 完成済み WAV バイト列を「総サイズなし」でストリーミング分割送信。
+- メッセージの流れ:
+  - START: payload 0（ストリーミング開始を示すのみ）。
+  - DATA: payload に WAV データチャンク（サイズは適宜分割）。
+  - END: payload 0。クライアントは受信完了として再生を開始する。
+- クライアントは START でバッファを初期化し、DATA を順次 append、END で再生。seq で欠損検知は可能（TCP 前提なら警告のみで継続も可）。
 
-レイアウト（簡易）:
-- 4 bytes: b"WAV1"
-- 4 bytes: uint32 total_bytes（送信予定の合計バイト数、LE）
-- 4 bytes: uint32 offset（このチャンクのオフセット、LE）
-- N bytes: payload（offset からの chunk データ）
+### kind の拡張例
 
-サーバーは複数チャンクに分けて送り、クライアントは offset と total を使って受信と結合を行います。
+- AudioPcm (1): 現行の PCM16LE アップリンク
+- AudioWav (2): WAV ダウンリンク
+- 予約: 3 以降を将来のコーデック / 制御用に確保
+
+### 簡易バイト例（AudioPcm / DATA）
+
+- kind: 0x01
+- messageType: DATA (0x02)
+- reserved: 0x00
+- seq: 0x0005 (LE => 0x05 0x00)
+- payloadBytes: 0x4000 (16384 バイトの PCM)
+- body: 16384 バイトの PCM16LE データ

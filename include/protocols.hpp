@@ -3,15 +3,19 @@
 
 #include <cstdint>
 
-// WebSocket audio protocol (PCM1)
-// Header layout (little-endian):
-//  - kind: 4 bytes ASCII magic "PCM1"
-//  - messageType: 1 = START, 2 = DATA, 3 = END
-//  - reserved: 1 byte (0)
+// WebSocket binary protocol (audio + future kinds)
+// Header layout (little-endian, packed):
+//  - kind: uint8_t   (message kind)
+//  - messageType: uint8_t  (START/DATA/END)
+//  - reserved: uint8_t (0, future flags)
 //  - seq: uint16 (sequence number)
-//  - sampleRate: uint32
-//  - channels: uint16
-//  - payloadBytes: uint16 (bytes of PCM16LE following header)
+//  - payloadBytes: uint16 (bytes following the header)
+
+enum class MessageKind : uint8_t
+{
+	AudioPcm = 1, // uplink PCM16LE stream (client -> server)
+	AudioWav = 2, // downlink WAV bytes (server -> client)
+};
 
 enum class MessageType : uint8_t
 {
@@ -22,11 +26,9 @@ enum class MessageType : uint8_t
 
 struct __attribute__((packed)) WsAudioHeader
 {
-	char kind[4];        // "PCM1"
+	uint8_t kind;        // MessageKind
 	uint8_t messageType; // MessageType
-	uint8_t reserved;    // 0
+	uint8_t reserved;    // 0 (flags/reserved)
 	uint16_t seq;        // sequence number
-	uint32_t sampleRate; // LE
-	uint16_t channels;   // 1
-	uint16_t payloadBytes; // PCM payload bytes following the header
+	uint16_t payloadBytes; // bytes following the header
 };

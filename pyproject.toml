@@ -1,7 +1,7 @@
 [project]
-name = "20260112-core-s3-push-talk"
+name = "websocket-control-stackchan-server"
 version = "0.1.0"
-description = "Add your description here"
+description = "A WebSocket control interface for StackChan AI agent"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

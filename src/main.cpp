@@ -41,6 +41,8 @@ static uint32_t tts_received = 0;
 static bool tts_ready_to_play = false;
 static bool tts_playing = false;
 static bool tts_mic_was_enabled = false;
+static bool tts_streaming = false;
+static uint16_t tts_seq_next = 0;
 
 static WebSocketsClient wsClient;
 
@@ -90,59 +92,84 @@ void setup()
                       //  M5.Display.printf("WS msg: %.*s\n", (int)length, payload);
                        break;
                      case WStype_BIN:
-                       if (length >= 12 && memcmp(payload, "WAV1", 4) == 0)
+                     {
+                       if (length < sizeof(WsAudioHeader))
                        {
-                         uint32_t total = 0;
-                         uint32_t offset = 0;
-                         memcpy(&total, payload + 4, sizeof(uint32_t));
-                         memcpy(&offset, payload + 8, sizeof(uint32_t));
-                         size_t chunk_len = length - 12;
+                         M5.Display.println("WS bin too short");
+                         break;
+                       }
 
-                         if (total == 0 || offset + chunk_len > total)
-                         {
-                           M5.Display.println("Invalid WAV chunk header");
-                           log_e("Invalid chunk hdr: total=%lu offset=%lu chunk=%u len=%u", (unsigned long)total, (unsigned long)offset, (unsigned)chunk_len, (unsigned)length);
-                           break;
-                         }
+                       WsAudioHeader rx{};
+                       memcpy(&rx, payload, sizeof(WsAudioHeader));
+                       size_t rx_payload_len = length - sizeof(WsAudioHeader);
+                       if (rx_payload_len != rx.payloadBytes)
+                       {
+                         M5.Display.println("WS payload len mismatch");
+                         break;
+                       }
 
-                         // 新規ストリーム開始
-                         if (offset == 0 || total != tts_expected)
+                       if (rx.kind == static_cast<uint8_t>(MessageKind::AudioWav))
+                       {
+                         auto msgType = static_cast<MessageType>(rx.messageType);
+                         const uint8_t *body = payload + sizeof(WsAudioHeader);
+
+                         if (msgType == MessageType::START)
                          {
-                           tts_buffer.assign(total, 0);
-                           tts_expected = total;
+                           tts_buffer.clear();
+                           tts_expected = 0;
                            tts_received = 0;
                            tts_ready_to_play = false;
                            tts_playing = false;
-                           M5.Display.printf("Recv TTS total=%u bytes\n", (unsigned)total);
-                           log_i("TTS start total=%lu", (unsigned long)total);
+                           tts_streaming = true;
+                           tts_seq_next = rx.seq + 1;
+                           M5.Display.println("Recv TTS START");
+                           log_i("TTS stream start seq=%u", (unsigned)rx.seq);
                          }
-
-                         if (offset != tts_received)
+                         else if (msgType == MessageType::DATA)
                          {
-                           M5.Display.println("Unexpected WAV offset, dropping");
-                           log_e("Unexpected offset: got=%lu expected=%lu", (unsigned long)offset, (unsigned long)tts_received);
-                           tts_expected = 0;
-                           tts_received = 0;
-                           tts_buffer.clear();
-                           break;
+                           if (!tts_streaming)
+                           {
+                             M5.Display.println("TTS DATA without START");
+                             break;
+                           }
+
+                           if (rx.seq != tts_seq_next)
+                           {
+                             log_w("TTS seq gap: got=%u expected=%u", (unsigned)rx.seq, (unsigned)tts_seq_next);
+                             // ここでは欠損のみ検知し、再送は行わない（TCP で無視できる前提）
+                             tts_seq_next = rx.seq + 1;
+                           }
+                           else
+                           {
+                             tts_seq_next++;
+                           }
+
+                           tts_buffer.insert(tts_buffer.end(), body, body + rx_payload_len);
+                           tts_received += rx_payload_len;
+                           log_d("TTS chunk size=%u recv=%lu", (unsigned)rx_payload_len, (unsigned long)tts_received);
                          }
-
-                         memcpy(tts_buffer.data() + offset, payload + 12, chunk_len);
-                         tts_received += chunk_len;
-                         log_d("TTS chunk offset=%lu size=%u recv=%lu/%lu", (unsigned long)offset, (unsigned)chunk_len, (unsigned long)tts_received, (unsigned long)tts_expected);
-
-                         if (tts_received >= tts_expected)
+                         else if (msgType == MessageType::END)
                          {
-                           M5.Display.printf("TTS ready: %u bytes\n", (unsigned)tts_expected);
-                           log_i("TTS ready total=%lu", (unsigned long)tts_expected);
-                           tts_ready_to_play = true;
+                           if (!tts_streaming)
+                           {
+                             M5.Display.println("TTS END without START");
+                             break;
+                           }
+                           tts_streaming = false;
+                           tts_seq_next = 0;
+                           if (!tts_buffer.empty())
+                           {
+                             tts_ready_to_play = true;
+                             M5.Display.printf("TTS ready: %u bytes\n", (unsigned)tts_buffer.size());
+                           }
                          }
+
+                         break;
                        }
-                       else
-                       {
-                         M5.Display.printf("WS bin len: %d\n", (int)length);
-                       }
+
+                       M5.Display.printf("WS bin kind=%u len=%d\n", (unsigned)rx.kind, (int)length);
                        break;
+                     }
                      default:
                        break;
                      } });
@@ -215,12 +242,10 @@ static bool sendPacket(MessageType type, const int16_t *samples, size_t sampleCo
   }
 
   WsAudioHeader header{};
-  memcpy(header.kind, "PCM1", 4);
+  header.kind = static_cast<uint8_t>(MessageKind::AudioPcm);
   header.messageType = static_cast<uint8_t>(type);
   header.reserved = 0;
   header.seq = seq_counter++;
-  header.sampleRate = static_cast<uint32_t>(SAMPLE_RATE);
-  header.channels = 1;
   header.payloadBytes = static_cast<uint16_t>(sampleCount * sizeof(int16_t));
 
   std::vector<uint8_t> packet;
