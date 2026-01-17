@@ -40,6 +40,60 @@ void connectWiFi()
   }
 }
 
+void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
+{
+  switch (type)
+  {
+  case WStype_DISCONNECTED:
+    M5.Display.println("WS: disconnected");
+    log_i("WS disconnected");
+    break;
+  case WStype_CONNECTED:
+    M5.Display.printf("WS: connected %s\n", SERVER_PATH);
+    log_i("WS connected to %s", SERVER_PATH);
+    break;
+  case WStype_TEXT:
+    //  M5.Display.printf("WS msg: %.*s\n", (int)length, payload);
+    break;
+  case WStype_BIN:
+  {
+    if (length < sizeof(WsHeader))
+    {
+      M5.Display.println("WS bin too short");
+      log_i("WS bin too short: %d", (int)length);
+      break;
+    }
+
+    WsHeader rx{};
+    memcpy(&rx, payload, sizeof(WsHeader));
+    size_t rx_payload_len = length - sizeof(WsHeader);
+    if (rx_payload_len != rx.payloadBytes)
+    {
+      M5.Display.println("WS payload len mismatch");
+      log_i("WS payload len mismatch: expected=%u got=%u", (unsigned)rx.payloadBytes, (unsigned)rx_payload_len);
+      break;
+    }
+
+    const uint8_t *body = payload + sizeof(WsHeader);
+    log_i("WS bin kind=%u len=%d", (unsigned)rx.kind, (int)length);
+
+    switch (static_cast<MessageKind>(rx.kind))
+    {
+    case MessageKind::AudioWav:
+      speaker.handleWavMessage(rx, body, rx_payload_len);
+      break;
+    default:
+      M5.Display.printf("WS bin kind=%u len=%d\n", (unsigned)rx.kind, (int)length);
+      break;
+    }
+
+    break;
+  }
+  default:
+    break;
+  }
+}
+
 void setup()
 {
   auto cfg = M5.config();
@@ -58,58 +112,7 @@ void setup()
   speaker.init();
 
   wsClient.begin(SERVER_HOST, SERVER_PORT, SERVER_PATH);
-  wsClient.onEvent([](WStype_t type, uint8_t *payload, size_t length)
-                   {
-                     switch (type)
-                     {
-                     case WStype_DISCONNECTED:
-                       M5.Display.println("WS: disconnected");
-                       log_i("WS disconnected");
-                       break;
-                     case WStype_CONNECTED:
-                       M5.Display.printf("WS: connected %s\n", SERVER_PATH);
-                       log_i("WS connected to %s", SERVER_PATH);
-                       break;
-                     case WStype_TEXT:
-                      //  M5.Display.printf("WS msg: %.*s\n", (int)length, payload);
-                       break;
-                     case WStype_BIN:
-                     {
-                       if (length < sizeof(WsHeader))
-                       {
-                         M5.Display.println("WS bin too short");
-                         log_i("WS bin too short: %d", (int)length);
-                         break;
-                       }
-
-                       WsHeader rx{};
-                       memcpy(&rx, payload, sizeof(WsHeader));
-                       size_t rx_payload_len = length - sizeof(WsHeader);
-                       if (rx_payload_len != rx.payloadBytes)
-                       {
-                         M5.Display.println("WS payload len mismatch");
-                         log_i("WS payload len mismatch: expected=%u got=%u", (unsigned)rx.payloadBytes, (unsigned)rx_payload_len);
-                         break;
-                       }
-
-                       const uint8_t *body = payload + sizeof(WsHeader);
-                      log_i("WS bin kind=%u len=%d", (unsigned)rx.kind, (int)length);
-
-                       switch (static_cast<MessageKind>(rx.kind))
-                       {
-                       case MessageKind::AudioWav:
-                         speaker.handleWavMessage(rx, body, rx_payload_len);
-                         break;
-                       default:
-                         M5.Display.printf("WS bin kind=%u len=%d\n", (unsigned)rx.kind, (int)length);
-                         break;
-                       }
-
-                       break;
-                     }
-                     default:
-                       break;
-                     } });
+  wsClient.onEvent(handleWsEvent);
   wsClient.setReconnectInterval(2000);
   wsClient.enableHeartbeat(15000, 3000, 2);
 }
