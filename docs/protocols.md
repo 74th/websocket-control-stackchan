@@ -6,7 +6,7 @@
 
 このドキュメントは、本リポジトリで使われている WebSocket ベースのバイナリプロトコルについて日本語で説明します。CoreS3（ESP32）とサーバー間の送受信で共通のヘッダを使います。
 
-## 共通ヘッダ: WsAudioHeader
+## 共通ヘッダ: WsHeader
 
 `include/protocols.hpp` に定義されるヘッダ（packed, LE）:
 
@@ -22,7 +22,7 @@ enum class MessageType : uint8_t {
   END  = 3,
 };
 
-struct __attribute__((packed)) WsAudioHeader {
+struct __attribute__((packed)) WsHeader {
   uint8_t  kind;         // MessageKind
   uint8_t  messageType;  // MessageType
   uint8_t  reserved;     // 0（将来のフラグ用）

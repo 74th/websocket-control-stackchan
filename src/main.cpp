@@ -9,6 +9,8 @@
 #include <vector>
 #include "config.h"
 #include "../include/protocols.hpp"
+#include "../include/state_machine.hpp"
+#include "../include/speaker.hpp"
 
 //////////////////// 設定 ////////////////////
 const char *WIFI_SSID = WIFI_SSID_H;
@@ -19,10 +21,7 @@ const char *SERVER_PATH = SERVER_PATH_H; // WebSocket エンドポイント
 const int SAMPLE_RATE = 16000;           // 16kHz モノラル
 /////////////////////////////////////////////
 
-#define STATE_IDLE 0
-#define STATE_STREAMING 1
-
-uint8_t state = STATE_IDLE;
+StateMachine stateMachine;
 
 // 0.5 秒ごとに 16kHz * 0.5 = 8,000 サンプルを送る
 static constexpr size_t CHUNK_SAMPLES = SAMPLE_RATE / 2; // 8,000 samples ≒ 0.5s
@@ -34,17 +33,8 @@ static size_t ring_write = 0;
 static size_t ring_read = 0;
 static size_t ring_available = 0;
 
-// Downlink TTS WAV assembly
-static std::vector<uint8_t> tts_buffer;
-static uint32_t tts_expected = 0;
-static uint32_t tts_received = 0;
-static bool tts_ready_to_play = false;
-static bool tts_playing = false;
-static bool tts_mic_was_enabled = false;
-static bool tts_streaming = false;
-static uint16_t tts_seq_next = 0;
-
 static WebSocketsClient wsClient;
+static Speaker speaker(stateMachine);
 
 // Protocol types are defined in include/protocols.hpp
 
@@ -93,81 +83,33 @@ void setup()
                        break;
                      case WStype_BIN:
                      {
-                       if (length < sizeof(WsAudioHeader))
+                       if (length < sizeof(WsHeader))
                        {
                          M5.Display.println("WS bin too short");
                          break;
                        }
 
-                       WsAudioHeader rx{};
-                       memcpy(&rx, payload, sizeof(WsAudioHeader));
-                       size_t rx_payload_len = length - sizeof(WsAudioHeader);
+                       WsHeader rx{};
+                       memcpy(&rx, payload, sizeof(WsHeader));
+                       size_t rx_payload_len = length - sizeof(WsHeader);
                        if (rx_payload_len != rx.payloadBytes)
                        {
                          M5.Display.println("WS payload len mismatch");
                          break;
                        }
 
-                       if (rx.kind == static_cast<uint8_t>(MessageKind::AudioWav))
+                       const uint8_t *body = payload + sizeof(WsHeader);
+
+                       switch (static_cast<MessageKind>(rx.kind))
                        {
-                         auto msgType = static_cast<MessageType>(rx.messageType);
-                         const uint8_t *body = payload + sizeof(WsAudioHeader);
-
-                         if (msgType == MessageType::START)
-                         {
-                           tts_buffer.clear();
-                           tts_expected = 0;
-                           tts_received = 0;
-                           tts_ready_to_play = false;
-                           tts_playing = false;
-                           tts_streaming = true;
-                           tts_seq_next = rx.seq + 1;
-                           M5.Display.println("Recv TTS START");
-                           log_i("TTS stream start seq=%u", (unsigned)rx.seq);
-                         }
-                         else if (msgType == MessageType::DATA)
-                         {
-                           if (!tts_streaming)
-                           {
-                             M5.Display.println("TTS DATA without START");
-                             break;
-                           }
-
-                           if (rx.seq != tts_seq_next)
-                           {
-                             log_w("TTS seq gap: got=%u expected=%u", (unsigned)rx.seq, (unsigned)tts_seq_next);
-                             // ここでは欠損のみ検知し、再送は行わない（TCP で無視できる前提）
-                             tts_seq_next = rx.seq + 1;
-                           }
-                           else
-                           {
-                             tts_seq_next++;
-                           }
-
-                           tts_buffer.insert(tts_buffer.end(), body, body + rx_payload_len);
-                           tts_received += rx_payload_len;
-                           log_d("TTS chunk size=%u recv=%lu", (unsigned)rx_payload_len, (unsigned long)tts_received);
-                         }
-                         else if (msgType == MessageType::END)
-                         {
-                           if (!tts_streaming)
-                           {
-                             M5.Display.println("TTS END without START");
-                             break;
-                           }
-                           tts_streaming = false;
-                           tts_seq_next = 0;
-                           if (!tts_buffer.empty())
-                           {
-                             tts_ready_to_play = true;
-                             M5.Display.printf("TTS ready: %u bytes\n", (unsigned)tts_buffer.size());
-                           }
-                         }
-
+                       case MessageKind::AudioWav:
+                         speaker.handleWavMessage(rx, body, rx_payload_len);
+                         break;
+                       default:
+                         M5.Display.printf("WS bin kind=%u len=%d\n", (unsigned)rx.kind, (int)length);
                          break;
                        }
 
-                       M5.Display.printf("WS bin kind=%u len=%d\n", (unsigned)rx.kind, (int)length);
                        break;
                      }
                      default:
@@ -241,7 +183,7 @@ static bool sendPacket(MessageType type, const int16_t *samples, size_t sampleCo
     return false;
   }
 
-  WsAudioHeader header{};
+  WsHeader header{};
   header.kind = static_cast<uint8_t>(MessageKind::AudioPcm);
   header.messageType = static_cast<uint8_t>(type);
   header.reserved = 0;
@@ -249,11 +191,11 @@ static bool sendPacket(MessageType type, const int16_t *samples, size_t sampleCo
   header.payloadBytes = static_cast<uint16_t>(sampleCount * sizeof(int16_t));
 
   std::vector<uint8_t> packet;
-  packet.resize(sizeof(WsAudioHeader) + header.payloadBytes);
-  memcpy(packet.data(), &header, sizeof(WsAudioHeader));
+  packet.resize(sizeof(WsHeader) + header.payloadBytes);
+  memcpy(packet.data(), &header, sizeof(WsHeader));
   if (header.payloadBytes > 0 && samples != nullptr)
   {
-    memcpy(packet.data() + sizeof(WsAudioHeader), samples, header.payloadBytes);
+    memcpy(packet.data() + sizeof(WsHeader), samples, header.payloadBytes);
   }
 
   wsClient.sendBIN(packet.data(), packet.size());
@@ -265,7 +207,7 @@ void loop()
   M5.update();
   wsClient.loop();
 
-  if (state == STATE_IDLE)
+  if (stateMachine.isIdle())
   {
     M5.Display.setCursor(0, 40);
     M5.Display.println("Hold Btn A: start / Release: stop");
@@ -278,16 +220,12 @@ void loop()
       seq_counter = 0;
 
       // TTS 受信・再生状態を初期化
-      tts_buffer.clear();
-      tts_expected = 0;
-      tts_received = 0;
-      tts_ready_to_play = false;
-      tts_playing = false;
+      speaker.reset();
 
       if (sendPacket(MessageType::START, nullptr, 0))
       {
         M5.Display.println("Streaming...");
-        state = STATE_STREAMING;
+        stateMachine.setState(StateMachine::Streaming);
       }
       else
       {
@@ -295,7 +233,7 @@ void loop()
       }
     }
   }
-  else if (state == STATE_STREAMING)
+  else if (stateMachine.isStreaming())
   {
     static int16_t mic_buf[MIC_READ_SAMPLES];
     if (M5.Mic.isEnabled())
@@ -314,7 +252,7 @@ void loop()
       if (!sendPacket(MessageType::DATA, send_buf, got))
       {
         M5.Display.println("WS send failed (data)");
-        state = STATE_IDLE;
+        stateMachine.setState(StateMachine::Idle);
         return;
       }
     }
@@ -329,12 +267,12 @@ void loop()
         if (!sendPacket(MessageType::DATA, tail_buf, got))
         {
           M5.Display.println("WS send failed (tail)");
-          state = STATE_IDLE;
+          stateMachine.setState(StateMachine::Idle);
           return;
         }
       }
       sendPacket(MessageType::END, nullptr, 0);
-      state = STATE_IDLE;
+      stateMachine.setState(StateMachine::Idle);
       M5.Display.println("Stopped. Hold Btn A to start.");
 
       // 終了直後のTTS再生でMic/Speakerが競合しないよう、少し待つ
@@ -342,46 +280,6 @@ void loop()
     }
   }
 
-  // ---- Downlink TTS playback (deferred from WS callback) ----
-  if (tts_ready_to_play && !tts_playing)
-  {
-    if (tts_buffer.empty())
-    {
-      tts_ready_to_play = false;
-      return;
-    }
-    M5.Speaker.stop();
-    M5.Display.println("Playing TTS...");
-    tts_mic_was_enabled = M5.Mic.isEnabled();
-    if (tts_mic_was_enabled)
-    {
-      M5.Mic.end();
-      log_i("Mic stopped for TTS playback");
-      delay(10);
-    }
-
-    log_i("TTS play start size=%u", (unsigned)tts_buffer.size());
-    M5.Speaker.playWav(tts_buffer.data(), tts_buffer.size());
-    tts_playing = true;
-    tts_ready_to_play = false;
-  }
-
-  if (tts_playing && !M5.Speaker.isPlaying())
-  {
-    log_i("TTS play done");
-    M5.Speaker.stop();
-    M5.Speaker.end();
-    delay(10);
-    tts_buffer.clear();
-    tts_expected = 0;
-    tts_received = 0;
-    tts_playing = false;
-    M5.Display.println("TTS done.");
-
-    if (tts_mic_was_enabled && !M5.Mic.isEnabled())
-    {
-      M5.Mic.begin();
-      log_i("Mic restarted after TTS playback");
-    }
-  }
+  // ---- Downlink TTS playback (handled by Speaker) ----
+  speaker.loop();
 }

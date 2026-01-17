@@ -24,7 +24,7 @@ enum class MessageType : uint8_t
 	END = 3,
 };
 
-struct __attribute__((packed)) WsAudioHeader
+struct __attribute__((packed)) WsHeader
 {
 	uint8_t kind;        // MessageKind
 	uint8_t messageType; // MessageType
