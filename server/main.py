@@ -4,6 +4,7 @@ from vvclient import Client as VVClient
 
 import struct
 import wave
+import io
 from datetime import datetime
 from pathlib import Path
 
@@ -33,7 +34,7 @@ SAMPLE_RATE_HZ = 16000
 CHANNELS = 1
 SAMPLE_WIDTH = 2  # bytes
 
-DOWN_WAV_CHUNK = 4096  # bytes per WebSocket frame for synthesized audio
+DOWN_WAV_CHUNK = 4096  # bytes per WebSocket frame for synthesized audio (raw PCM)
 
 def create_voicevox_client() -> VVClient:
     return VVClient(base_uri="http://localhost:50021")
@@ -173,25 +174,43 @@ async def websocket_audio(ws: WebSocket):
                     async with create_voicevox_client() as client:
                         audio_query = await client.create_audio_query(voice_text, speaker=29)
                         wav_bytes = await audio_query.synthesis(speaker=29)
-                    logger.info("VOICEVOX synthesis succeeded, sending back WAV")
 
-                    # START (no payload): begin streaming
+                    # Extract raw PCM and meta from WAV
+                    with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
+                        pcm_bytes = wf.readframes(wf.getnframes())
+                        tts_sample_rate = wf.getframerate()
+                        tts_channels = wf.getnchannels()
+                        tts_sample_width = wf.getsampwidth()
+
+                    if tts_sample_width != SAMPLE_WIDTH:
+                        await ws.send_json({"error": f"unsupported sample width {tts_sample_width}"})
+                        continue
+
+                    logger.info(
+                        "VOICEVOX synthesis succeeded, sending back RAW PCM sr=%d ch=%d bytes=%d",
+                        tts_sample_rate,
+                        tts_channels,
+                        len(pcm_bytes),
+                    )
+
+                    # START: include meta payload (<uint32 sample_rate><uint16 channels>)
+                    start_payload = struct.pack("<IH", tts_sample_rate, tts_channels)
                     start_hdr = struct.pack(
                         WS_HEADER_FMT,
                         WS_KIND_WAV,
                         WS_MSG_START,
                         0,
                         down_seq,
-                        0,
+                        len(start_payload),
                     )
-                    await ws.send_bytes(start_hdr)
+                    await ws.send_bytes(start_hdr + start_payload)
                     down_seq += 1
 
-                    # DATA chunks (streaming)
+                    # DATA chunks (raw PCM)
                     offset = 0
-                    total = len(wav_bytes)
+                    total = len(pcm_bytes)
                     while offset < total:
-                        chunk = wav_bytes[offset : offset + DOWN_WAV_CHUNK]
+                        chunk = pcm_bytes[offset : offset + DOWN_WAV_CHUNK]
                         data_hdr = struct.pack(
                             WS_HEADER_FMT,
                             WS_KIND_WAV,
@@ -216,7 +235,7 @@ async def websocket_audio(ws: WebSocket):
                     await ws.send_bytes(end_hdr)
                     down_seq += 1
 
-                    logger.info("Sent synthesized WAV back to client via WS streaming protocol")
+                    logger.info("Sent synthesized RAW PCM back to client via WS streaming protocol")
                 except Exception as exc:  # pragma: no cover
                     await ws.send_json({"error": f"voicevox synthesis failed: {exc}"})
 
