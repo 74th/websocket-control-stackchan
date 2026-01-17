@@ -31,13 +31,16 @@ bool Mic::startStreaming()
 {
   ring_write_ = ring_read_ = ring_available_ = 0;
   seq_counter_ = 0;
+  M5.Mic.begin();
   streaming_ = true;
   return sendPacket(MessageType::START, nullptr, 0);
 }
 
 bool Mic::stopStreaming()
 {
-  if (!streaming_)
+  bool ok = sendPacket(MessageType::END, nullptr, 0);
+  M5.Mic.end();
+  return ok;
   {
     return true;
   }

@@ -108,7 +108,6 @@ void setup()
 
   // Mic/Speaker setup
   M5.Speaker.setVolume(200); // 0-255
-  M5.Mic.begin();
   speaker.init();
 
   wsClient.begin(SERVER_HOST, SERVER_PORT, SERVER_PATH);
