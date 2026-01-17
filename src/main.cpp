@@ -8,6 +8,7 @@
 #include <cstring>
 #include <vector>
 #include "config.h"
+#include "../include/protocols.hpp"
 
 //////////////////// 設定 ////////////////////
 const char *WIFI_SSID = WIFI_SSID_H;
@@ -43,23 +44,7 @@ static bool tts_mic_was_enabled = false;
 
 static WebSocketsClient wsClient;
 
-enum class MessageType : uint8_t
-{
-  START = 1,
-  DATA = 2,
-  END = 3,
-};
-
-struct __attribute__((packed)) WsAudioHeader
-{
-  char kind[4];        // "PCM1"
-  uint8_t messageType; // MessageType
-  uint8_t reserved;    // 0
-  uint16_t seq;        // sequence number
-  uint32_t sampleRate; // LE
-  uint16_t channels;   // 1
-  uint16_t payloadBytes; // PCM payload bytes following the header
-};
+// Protocol types are defined in include/protocols.hpp
 
 static uint16_t seq_counter = 0;
 
