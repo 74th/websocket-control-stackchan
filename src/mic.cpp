@@ -1,0 +1,170 @@
+#include "mic.hpp"
+#include <algorithm>
+#include <cstring>
+
+Mic::Mic(WebSocketsClient &ws, StateMachine &sm, int sampleRate)
+    : ws_(ws), state_(sm), sample_rate_(sampleRate),
+      chunk_samples_(static_cast<size_t>(sampleRate) / 2),
+      ring_capacity_samples_(static_cast<size_t>(sampleRate) * 2)
+{
+}
+
+void Mic::init()
+{
+  if (ring_buffer_)
+  {
+    heap_caps_free(ring_buffer_);
+    ring_buffer_ = nullptr;
+  }
+  ring_buffer_ = (int16_t *)heap_caps_malloc(ring_capacity_samples_ * sizeof(int16_t), MALLOC_CAP_8BIT);
+  if (ring_buffer_)
+  {
+    memset(ring_buffer_, 0, ring_capacity_samples_ * sizeof(int16_t));
+  }
+  ring_write_ = ring_read_ = ring_available_ = 0;
+  seq_counter_ = 0;
+  streaming_ = false;
+}
+
+bool Mic::startStreaming()
+{
+  ring_write_ = ring_read_ = ring_available_ = 0;
+  seq_counter_ = 0;
+  streaming_ = true;
+  return sendPacket(MessageType::START, nullptr, 0);
+}
+
+bool Mic::stopStreaming()
+{
+  if (!streaming_)
+  {
+    return true;
+  }
+  // flush remaining samples
+  if (ring_available_ > 0)
+  {
+    static int16_t tail_buf[4096]; // large enough for remaining (<= ring capacity)
+    size_t to_send = ring_available_;
+    size_t sent = 0;
+    while (to_send > 0)
+    {
+      size_t chunk = std::min(chunk_samples_, to_send);
+      sent = ringPop(tail_buf, chunk);
+      if (!sendPacket(MessageType::DATA, tail_buf, sent))
+      {
+        streaming_ = false;
+        return false;
+      }
+      to_send -= sent;
+    }
+  }
+  streaming_ = false;
+  return sendPacket(MessageType::END, nullptr, 0);
+}
+
+bool Mic::loop()
+{
+  if (!streaming_)
+  {
+    return true;
+  }
+
+  static int16_t mic_buf[256];
+  if (M5.Mic.isEnabled())
+  {
+    if (M5.Mic.record(mic_buf, mic_read_samples_, sample_rate_))
+    {
+      ringPush(mic_buf, mic_read_samples_);
+    }
+  }
+
+  while (ring_available_ >= chunk_samples_)
+  {
+    static int16_t send_buf[4096];
+    size_t got = ringPop(send_buf, chunk_samples_);
+    if (!sendPacket(MessageType::DATA, send_buf, got))
+    {
+      streaming_ = false;
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool Mic::sendPacket(MessageType type, const int16_t *samples, size_t sampleCount)
+{
+  if ((WiFi.status() != WL_CONNECTED) || !ws_.isConnected())
+  {
+    return false;
+  }
+
+  WsHeader header{};
+  header.kind = static_cast<uint8_t>(MessageKind::AudioPcm);
+  header.messageType = static_cast<uint8_t>(type);
+  header.reserved = 0;
+  header.seq = seq_counter_++;
+  header.payloadBytes = static_cast<uint16_t>(sampleCount * sizeof(int16_t));
+
+  std::vector<uint8_t> packet;
+  packet.resize(sizeof(WsHeader) + header.payloadBytes);
+  memcpy(packet.data(), &header, sizeof(WsHeader));
+  if (header.payloadBytes > 0 && samples != nullptr)
+  {
+    memcpy(packet.data() + sizeof(WsHeader), samples, header.payloadBytes);
+  }
+
+  ws_.sendBIN(packet.data(), packet.size());
+  return true;
+}
+
+void Mic::ringPush(const int16_t *src, size_t samples)
+{
+  if (samples == 0)
+  {
+    return;
+  }
+
+  if (samples > ring_capacity_samples_)
+  {
+    src += (samples - ring_capacity_samples_);
+    samples = ring_capacity_samples_;
+  }
+
+  size_t overflow = (ring_available_ + samples > ring_capacity_samples_) ? (ring_available_ + samples - ring_capacity_samples_) : 0;
+  if (overflow > 0)
+  {
+    ring_read_ = (ring_read_ + overflow) % ring_capacity_samples_;
+    ring_available_ -= overflow;
+  }
+
+  size_t first = std::min(samples, ring_capacity_samples_ - ring_write_);
+  memcpy(ring_buffer_ + ring_write_, src, first * sizeof(int16_t));
+  size_t remain = samples - first;
+  if (remain > 0)
+  {
+    memcpy(ring_buffer_, src + first, remain * sizeof(int16_t));
+  }
+  ring_write_ = (ring_write_ + samples) % ring_capacity_samples_;
+  ring_available_ += samples;
+}
+
+size_t Mic::ringPop(int16_t *dst, size_t samples)
+{
+  size_t to_read = std::min(samples, ring_available_);
+  if (to_read == 0)
+  {
+    return 0;
+  }
+
+  size_t first = std::min(to_read, ring_capacity_samples_ - ring_read_);
+  memcpy(dst, ring_buffer_ + ring_read_, first * sizeof(int16_t));
+  size_t remain = to_read - first;
+  if (remain > 0)
+  {
+    memcpy(dst + first, ring_buffer_, remain * sizeof(int16_t));
+  }
+  ring_read_ = (ring_read_ + to_read) % ring_capacity_samples_;
+  ring_available_ -= to_read;
+  return to_read;
+}
