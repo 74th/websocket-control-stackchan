@@ -64,9 +64,11 @@ void setup()
                      {
                      case WStype_DISCONNECTED:
                        M5.Display.println("WS: disconnected");
+                       log_i("WS disconnected");
                        break;
                      case WStype_CONNECTED:
                        M5.Display.printf("WS: connected %s\n", SERVER_PATH);
+                       log_i("WS connected to %s", SERVER_PATH);
                        break;
                      case WStype_TEXT:
                       //  M5.Display.printf("WS msg: %.*s\n", (int)length, payload);
@@ -76,6 +78,7 @@ void setup()
                        if (length < sizeof(WsHeader))
                        {
                          M5.Display.println("WS bin too short");
+                         log_i("WS bin too short: %d", (int)length);
                          break;
                        }
 
@@ -85,10 +88,12 @@ void setup()
                        if (rx_payload_len != rx.payloadBytes)
                        {
                          M5.Display.println("WS payload len mismatch");
+                         log_i("WS payload len mismatch: expected=%u got=%u", (unsigned)rx.payloadBytes, (unsigned)rx_payload_len);
                          break;
                        }
 
                        const uint8_t *body = payload + sizeof(WsHeader);
+                      log_i("WS bin kind=%u len=%d", (unsigned)rx.kind, (int)length);
 
                        switch (static_cast<MessageKind>(rx.kind))
                        {
@@ -121,6 +126,7 @@ void loop()
 
     if (M5.BtnA.wasPressed())
     {
+      log_i("pressing Btn A: start streaming");
       // TTS 受信・再生状態を初期化
       speaker.reset();
 
@@ -140,6 +146,7 @@ void loop()
     if (!mic.loop())
     {
       M5.Display.println("WS send failed (data)");
+      log_i("WS send failed (data)");
       stateMachine.setState(StateMachine::Idle);
       return;
     }
@@ -147,9 +154,11 @@ void loop()
     // ボタンを離したら残りを送って終了メッセージ
     if (M5.BtnA.wasReleased())
     {
+      log_i("Btn A released: stop streaming");
       if (!mic.stopStreaming())
       {
         M5.Display.println("WS send failed (tail/end)");
+        log_i("WS send failed (tail/end)");
       }
       stateMachine.setState(StateMachine::Idle);
       M5.Display.println("Stopped. Hold Btn A to start.");

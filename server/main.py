@@ -92,11 +92,13 @@ async def websocket_audio(ws: WebSocket):
                 return
 
             if msg_type == WS_MSG_START:
+                logger.info("Received START, kind=%d", kind)
                 pcm_buffer = bytearray()
                 streaming = True
                 continue
 
             if msg_type == WS_MSG_DATA:
+                logger.info("Received DATA, kind=%d, payload_bytes=%d", kind, payload_bytes)
                 if not streaming:
                     await ws.close(code=1003, reason="data received before start")
                     return
@@ -107,6 +109,7 @@ async def websocket_audio(ws: WebSocket):
                 continue
 
             if msg_type == WS_MSG_END:
+                logger.info("Received END, kind=%d, payload_bytes=%d", kind, payload_bytes)
                 if not streaming:
                     await ws.close(code=1003, reason="end received before start")
                     return

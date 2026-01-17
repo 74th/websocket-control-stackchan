@@ -1,6 +1,7 @@
 #include "mic.hpp"
 #include <algorithm>
 #include <cstring>
+#include <vector>
 
 Mic::Mic(WebSocketsClient &ws, StateMachine &sm, int sampleRate)
     : ws_(ws), state_(sm), sample_rate_(sampleRate),
@@ -43,14 +44,14 @@ bool Mic::stopStreaming()
   // flush remaining samples
   if (ring_available_ > 0)
   {
-    static int16_t tail_buf[4096]; // large enough for remaining (<= ring capacity)
+    const size_t tail_capacity = chunk_samples_; // 1チャンク分を丸ごと持てるサイズ
+    std::vector<int16_t> tail_buf(tail_capacity);
     size_t to_send = ring_available_;
-    size_t sent = 0;
     while (to_send > 0)
     {
-      size_t chunk = std::min(chunk_samples_, to_send);
-      sent = ringPop(tail_buf, chunk);
-      if (!sendPacket(MessageType::DATA, tail_buf, sent))
+      size_t chunk = std::min({chunk_samples_, to_send, tail_capacity});
+      size_t sent = ringPop(tail_buf.data(), chunk);
+      if (!sendPacket(MessageType::DATA, tail_buf.data(), sent))
       {
         streaming_ = false;
         return false;
@@ -80,9 +81,14 @@ bool Mic::loop()
 
   while (ring_available_ >= chunk_samples_)
   {
-    static int16_t send_buf[4096];
-    size_t got = ringPop(send_buf, chunk_samples_);
-    if (!sendPacket(MessageType::DATA, send_buf, got))
+    static std::vector<int16_t> send_buf;
+    if (send_buf.size() < chunk_samples_)
+    {
+      send_buf.resize(chunk_samples_);
+    }
+
+    size_t got = ringPop(send_buf.data(), chunk_samples_);
+    if (!sendPacket(MessageType::DATA, send_buf.data(), got))
     {
       streaming_ = false;
       return false;
