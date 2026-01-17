@@ -1,0 +1,12 @@
+[project]
+name = "20260112-core-s3-push-talk"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi[websockets]>=0.128.0",
+    "google-cloud-speech>=2.35.0",
+    "uvicorn[standard]>=0.40.0",
+    "voicevox-client>=1.1.0",
+]
