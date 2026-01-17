@@ -11,6 +11,9 @@ class Speaker
 public:
   explicit Speaker(StateMachine &sm) : state_(sm) {}
 
+  // Initialize internal buffers/state (call once from setup)
+  void init();
+
   // Process one WS audio message of kind AudioWav
   void handleWavMessage(const WsHeader &hdr, const uint8_t *body, size_t bodyLen);
 

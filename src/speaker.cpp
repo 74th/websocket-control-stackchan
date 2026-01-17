@@ -10,6 +10,11 @@ void Speaker::reset()
   next_seq_ = 0;
 }
 
+void Speaker::init()
+{
+  reset();
+}
+
 void Speaker::handleWavMessage(const WsHeader &hdr, const uint8_t *body, size_t bodyLen)
 {
   auto msgType = static_cast<MessageType>(hdr.messageType);
