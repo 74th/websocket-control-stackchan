@@ -3,6 +3,7 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
-include/config.h
-server/recordings
+.log
+firmware/include/config.h
+recordings
 ._.DS_Store
