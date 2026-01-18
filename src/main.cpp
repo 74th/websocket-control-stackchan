@@ -100,7 +100,7 @@ void setup()
   M5.begin(cfg);
   mic.init();
 
-  M5.Display.setTextSize(2);
+  // M5.Display.setTextSize(2);
   M5.Display.println("CoreS3 SE - AI Home Agent (WS)");
 
   connectWiFi();

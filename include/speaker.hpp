@@ -25,8 +25,8 @@ public:
 
 private:
   StateMachine &state_;
-  std::vector<uint8_t> buffer_;
-  bool ready_ = false;
+  std::vector<uint8_t> buffer_[3];
+  uint8_t current_buffer_ = 0;
   bool playing_ = false;
   bool mic_was_enabled_ = false;
   bool streaming_ = false;

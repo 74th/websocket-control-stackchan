@@ -171,6 +171,7 @@ async def websocket_audio(ws: WebSocket):
 
                 # VOICEVOX で合成した音声を CoreS3 へ返送（分割送信）
                 try:
+                    voice_text = "おはようございます、今日の体調はいかがでしょうか？ 今日の東京は晴れて、とても乾燥して寒い日になりそうです。お出かけの時は暖かくしなさいね。今日こそはジムに行きましょう。"
                     async with create_voicevox_client() as client:
                         audio_query = await client.create_audio_query(voice_text, speaker=29)
                         wav_bytes = await audio_query.synthesis(speaker=29)
@@ -194,6 +195,7 @@ async def websocket_audio(ws: WebSocket):
                     )
 
                     # START: include meta payload (<uint32 sample_rate><uint16 channels>)
+                    logger.info("Sending START")
                     start_payload = struct.pack("<IH", tts_sample_rate, tts_channels)
                     start_hdr = struct.pack(
                         WS_HEADER_FMT,
@@ -210,6 +212,7 @@ async def websocket_audio(ws: WebSocket):
                     offset = 0
                     total = len(pcm_bytes)
                     while offset < total:
+                        logger.info("Sending DATA chunk offset=%d/%d", offset, total)
                         chunk = pcm_bytes[offset : offset + DOWN_WAV_CHUNK]
                         data_hdr = struct.pack(
                             WS_HEADER_FMT,
@@ -224,6 +227,7 @@ async def websocket_audio(ws: WebSocket):
                         offset += len(chunk)
 
                     # END (no payload)
+                    logger.info("Sending END")
                     end_hdr = struct.pack(
                         WS_HEADER_FMT,
                         WS_KIND_WAV,
