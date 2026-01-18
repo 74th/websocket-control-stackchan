@@ -8,13 +8,11 @@ from contextlib import suppress
 from datetime import datetime
 from logging import StreamHandler, getLogger
 from pathlib import Path
-from typing import Awaitable, Callable, Optional
+from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import WebSocket, WebSocketDisconnect
 from google.cloud import speech
 from vvclient import Client as VVClient
-
-sst_client = speech.SpeechClient()
 
 logger = getLogger(__name__)
 logger.addHandler(StreamHandler())
@@ -397,79 +395,22 @@ class WsProxy:
             self._speaking_done.set()
 
 
-class StackChanApp:
-    def __init__(self):
-        self.fastapi = FastAPI(title="CoreS3 PCM receiver")
-        self._setup_fn: Optional[Callable[[WsProxy], Awaitable[None]]] = None
-        self._loop_fn: Optional[Callable[[WsProxy], Awaitable[None]]] = None
-
-        @self.fastapi.get("/health")
-        async def _health() -> dict[str, str]:
-            return {"status": "ok"}
-
-        @self.fastapi.websocket("/ws/audio")
-        async def _ws_audio(websocket: WebSocket):
-            await self._handle_ws(websocket)
-
-    def setup(self, fn: Callable[["WsProxy"], Awaitable[None]]):
-        self._setup_fn = fn
-        return fn
-
-    def loop(self, fn: Callable[["WsProxy"], Awaitable[None]]):
-        self._loop_fn = fn
-        return fn
-
-    async def _handle_ws(self, websocket: WebSocket) -> None:
-        await websocket.accept()
-        proxy = WsProxy(websocket, speech_client=sst_client)
-        await proxy.start()
-        try:
-            if self._setup_fn:
-                await self._setup_fn(proxy)
-
-            while not proxy.closed:
-                if self._loop_fn:
-                    await self._loop_fn(proxy)
-                else:
-                    await asyncio.sleep(0.05)
-
-                if proxy.receive_task and proxy.receive_task.done():
-                    break
-        except WebSocketDisconnect:
-            pass
-        finally:
-            await proxy.close()
-
-    def run(self, host: str = "0.0.0.0", port: int = 8000, reload: bool = True) -> None:
-        import uvicorn
-
-        uvicorn.run("server.main:fastapi_app", host=host, port=port, reload=reload)
-
-
-logic_app = StackChanApp()
-
-
-@logic_app.setup
-async def setup(proxy: WsProxy):
-    logger.info("WebSocket connected")
-
-
-@logic_app.loop
-async def loop(proxy: WsProxy):
-    text = await proxy.get_message_async()
-    logger.info("Heard: %s", text)
-    await proxy.start_talking(text)
-
-
-fastapi_app = logic_app.fastapi
-
-# FastAPI application export for uvicorn (server.main:app)
-app = fastapi_app
-
-
-def main() -> None:
-    logic_app.run(host="0.0.0.0", port=8000, reload=True)
-
-
-if __name__ == "__main__":
-    main()
+__all__ = [
+    "WsProxy",
+    "WS_HEADER_FMT",
+    "WS_HEADER_SIZE",
+    "WS_KIND_PCM",
+    "WS_KIND_WAV",
+    "WS_MSG_START",
+    "WS_MSG_DATA",
+    "WS_MSG_END",
+    "SAMPLE_RATE_HZ",
+    "CHANNELS",
+    "SAMPLE_WIDTH",
+    "DOWN_WAV_CHUNK",
+    "DOWN_SEGMENT_MILLIS",
+    "DOWN_SEGMENT_STAGGER_MILLIS",
+    "create_voicevox_client",
+    "mulaw_to_pcm16",
+    "logger",
+]

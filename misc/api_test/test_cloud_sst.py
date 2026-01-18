@@ -4,7 +4,7 @@ from google.cloud import speech
 sst_client = speech.SpeechClient()
 
 def main():
-    with open("recordings/output.wav", "rb") as f:
+    with open(".log/recordings/output.wav", "rb") as f:
         audio_content = f.read()
 
     audio = speech.RecognitionAudio(content=audio_content)
