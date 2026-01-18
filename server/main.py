@@ -2,6 +2,7 @@ from logging import StreamHandler, getLogger
 # from __future__ import annotations
 from vvclient import Client as VVClient
 
+import asyncio
 import struct
 import wave
 import io
@@ -35,6 +36,8 @@ CHANNELS = 1
 SAMPLE_WIDTH = 2  # bytes
 
 DOWN_WAV_CHUNK = 4096  # bytes per WebSocket frame for synthesized audio (raw PCM)
+DOWN_SEGMENT_MILLIS = 2000  # duration of a single START-DATA-END segment in milliseconds
+DOWN_SEGMENT_STAGGER_MILLIS = DOWN_SEGMENT_MILLIS // 2  # half interval for the second segment start
 
 def create_voicevox_client() -> VVClient:
     return VVClient(base_uri="http://localhost:50021")
@@ -194,52 +197,81 @@ async def websocket_audio(ws: WebSocket):
                         len(pcm_bytes),
                     )
 
-                    # START: include meta payload (<uint32 sample_rate><uint16 channels>)
-                    logger.info("Sending START")
-                    start_payload = struct.pack("<IH", tts_sample_rate, tts_channels)
-                    start_hdr = struct.pack(
-                        WS_HEADER_FMT,
-                        WS_KIND_WAV,
-                        WS_MSG_START,
-                        0,
-                        down_seq,
-                        len(start_payload),
-                    )
-                    await ws.send_bytes(start_hdr + start_payload)
-                    down_seq += 1
+                    bytes_per_second = tts_sample_rate * tts_channels * tts_sample_width
+                    segment_bytes = int(bytes_per_second * (DOWN_SEGMENT_MILLIS / 1000))
 
-                    # DATA chunks (raw PCM)
+                    if segment_bytes <= 0:
+                        await ws.send_json({"error": "invalid segment size computed"})
+                        continue
+
+                    segments: list[bytes] = []
                     offset = 0
                     total = len(pcm_bytes)
                     while offset < total:
-                        logger.info("Sending DATA chunk offset=%d/%d", offset, total)
-                        chunk = pcm_bytes[offset : offset + DOWN_WAV_CHUNK]
-                        data_hdr = struct.pack(
+                        segments.append(pcm_bytes[offset : offset + segment_bytes])
+                        offset += segment_bytes
+
+                    async def send_segment(segment_pcm: bytes, seq: int) -> int:
+                        logger.info("Sending segment bytes=%d", len(segment_pcm))
+                        start_payload = struct.pack("<IH", tts_sample_rate, tts_channels)
+                        start_hdr = struct.pack(
                             WS_HEADER_FMT,
                             WS_KIND_WAV,
-                            WS_MSG_DATA,
+                            WS_MSG_START,
                             0,
-                            down_seq,
-                            len(chunk),
+                            seq,
+                            len(start_payload),
                         )
-                        await ws.send_bytes(data_hdr + chunk)
-                        down_seq += 1
-                        offset += len(chunk)
+                        await ws.send_bytes(start_hdr + start_payload)
+                        seq += 1
 
-                    # END (no payload)
-                    logger.info("Sending END")
-                    end_hdr = struct.pack(
-                        WS_HEADER_FMT,
-                        WS_KIND_WAV,
-                        WS_MSG_END,
-                        0,
-                        down_seq,
-                        0,
-                    )
-                    await ws.send_bytes(end_hdr)
-                    down_seq += 1
+                        seg_offset = 0
+                        seg_total = len(segment_pcm)
+                        while seg_offset < seg_total:
+                            chunk = segment_pcm[seg_offset : seg_offset + DOWN_WAV_CHUNK]
+                            data_hdr = struct.pack(
+                                WS_HEADER_FMT,
+                                WS_KIND_WAV,
+                                WS_MSG_DATA,
+                                0,
+                                seq,
+                                len(chunk),
+                            )
+                            await ws.send_bytes(data_hdr + chunk)
+                            seq += 1
+                            seg_offset += len(chunk)
 
-                    logger.info("Sent synthesized RAW PCM back to client via WS streaming protocol")
+                        end_hdr = struct.pack(
+                            WS_HEADER_FMT,
+                            WS_KIND_WAV,
+                            WS_MSG_END,
+                            0,
+                            seq,
+                            0,
+                        )
+                        await ws.send_bytes(end_hdr)
+                        seq += 1
+                        return seq
+
+                    loop = asyncio.get_running_loop()
+                    base_time = loop.time()
+
+                    for idx, segment in enumerate(segments):
+                        if idx == 0:
+                            target_ms = 0
+                        elif idx == 1:
+                            target_ms = DOWN_SEGMENT_STAGGER_MILLIS
+                        else:
+                            target_ms = DOWN_SEGMENT_STAGGER_MILLIS + (idx - 1) * DOWN_SEGMENT_MILLIS
+
+                        target_time = base_time + target_ms / 1000
+                        now = loop.time()
+                        if target_time > now:
+                            await asyncio.sleep(target_time - now)
+
+                        down_seq = await send_segment(segment, down_seq)
+
+                    logger.info("Sent synthesized RAW PCM back to client via segmented WS streaming protocol")
                 except Exception as exc:  # pragma: no cover
                     await ws.send_json({"error": f"voicevox synthesis failed: {exc}"})
 
