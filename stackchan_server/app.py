@@ -6,13 +6,13 @@ from typing import Awaitable, Callable, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from google.cloud import speech
 
-from .ws_proxy import WsProxy, logger
+from .ws_proxy import WsProxy
 
 
 class StackChanApp:
-    def __init__(self, speech_client: Optional[speech.SpeechClient] = None):
-        self.speech_client = speech_client or speech.SpeechClient()
-        self.fastapi = FastAPI(title="CoreS3 PCM receiver")
+    def __init__(self) -> None:
+        self.speech_client = speech.SpeechClient()
+        self.fastapi = FastAPI(title="StackChan WebSocket Server")
         self._setup_fn: Optional[Callable[[WsProxy], Awaitable[None]]] = None
         self._loop_fn: Optional[Callable[[WsProxy], Awaitable[None]]] = None
 
@@ -20,7 +20,7 @@ class StackChanApp:
         async def _health() -> dict[str, str]:
             return {"status": "ok"}
 
-        @self.fastapi.websocket("/ws/audio")
+        @self.fastapi.websocket("/ws/stackchan")
         async def _ws_audio(websocket: WebSocket):
             await self._handle_ws(websocket)
 
@@ -60,4 +60,4 @@ class StackChanApp:
         uvicorn.run(self.fastapi, host=host, port=port, reload=reload)
 
 
-__all__ = ["StackChanApp", "logger"]
+__all__ = ["StackChanApp"]

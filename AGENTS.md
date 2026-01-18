@@ -34,7 +34,7 @@
 - 受信エンドポイント:
   - `GET /health`: ヘルスチェック。
   - `POST /api/v1/audio`: HTTP 経由で PCM16LE または μ-law を受信し WAV 保存（従来互換）。
-  - `WS /ws/audio`: 上記 PCM1 プロトコルを受信。START→DATA 蓄積→END で WAV を保存し JSON でメタ情報を返信。
+  - `WS /ws/stackchan`: 上記 PCM1 プロトコルを受信。START→DATA 蓄積→END で WAV を保存し JSON でメタ情報を返信。
 - WAV 保存: `server/recordings/rec_ws_YYYYmmdd_HHMMSS_micro.wav` として PCM16LE を保存（サンプル幅 16bit、モノラル）。
 - VOICEVOX 連携: END 処理後に VOICEVOX クライアント（`voicevox-client` の `VVClient`）を起動し、`"こんにちは！"` を speaker=1 で合成。生成した WAV を WebSocket BIN メッセージ（`WAV1` + `<uint32 length>` + wav バイト列）で CoreS3 に返送し、CoreS3 側スピーカーで再生する。
   - 期待するサービス: `http://localhost:50021`（docker-compose で `voicevox_engine` がリッスン）。

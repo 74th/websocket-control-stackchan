@@ -10,3 +10,8 @@ dependencies = [
     "uvicorn[standard]>=0.40.0",
     "voicevox-client>=1.1.0",
 ]
+
+[dependency-groups]
+sample-gemini = [
+    "google-genai>=1.59.0",
+]

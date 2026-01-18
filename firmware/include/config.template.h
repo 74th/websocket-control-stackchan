@@ -4,4 +4,4 @@
 // WebSocket サーバ設定
 #define SERVER_HOST_H "192.168.1.179"   // 例: サーバのIP
 #define SERVER_PORT_H 8000              // 例: FastAPIのポート
-#define SERVER_PATH_H "/ws/audio"      // WebSocketパス
+#define SERVER_PATH_H "/ws/stackchan"      // WebSocketパス

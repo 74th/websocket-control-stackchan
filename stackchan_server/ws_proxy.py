@@ -15,8 +15,6 @@ from google.cloud import speech
 from vvclient import Client as VVClient
 
 logger = getLogger(__name__)
-logger.addHandler(StreamHandler())
-logger.setLevel("DEBUG")
 
 BASE_DIR = Path(__file__).resolve().parent
 RECORDINGS_DIR = BASE_DIR / "recordings"
