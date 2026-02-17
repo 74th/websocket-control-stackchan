@@ -2,6 +2,7 @@
 // 事前に: Tools→PSRAM有効（SEはPSRAM無しでも動くよう小さめバッファ）
 
 #include <M5Unified.h>
+#include <ESP_SR_M5Unified.h>
 #include <WiFi.h>
 #include <WebSocketsClient.h>
 #include <algorithm>
@@ -94,10 +95,50 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
   }
 }
 
+void onSrEvent(sr_event_t event, int command_id, int phrase_id)
+{
+  switch(event)
+  {
+    case SR_EVENT_WAKEWORD:
+    log_i("WakeWord Detected!");
+    speaker.reset();
+
+    if (mic.startStreaming())
+    {
+      log_i("Started Mic streaming");
+      M5.Display.fillScreen(TFT_GREEN);
+      M5.Display.setCursor(10, 10);
+      M5.Display.setTextSize(3);
+      M5.Display.setTextColor(TFT_BLACK, TFT_GREEN);
+      M5.Display.println("Streaming...");
+      stateMachine.setState(StateMachine::Streaming);
+
+      ESP_SR_M5.pause();
+    }
+    else
+    {
+      log_i("Failed to start Mic streaming");
+      M5.Display.fillScreen(TFT_YELLOW);
+      M5.Display.setCursor(10, 10);
+      M5.Display.setTextSize(3);
+      M5.Display.setTextColor(TFT_BLACK, TFT_YELLOW);
+    }
+    break;
+  default:
+    log_i("Unknown Event: %d", event);
+  }
+}
+
 void setup()
 {
   auto cfg = M5.config();
   M5.begin(cfg);
+  auto mic_cfg = M5.Mic.config();
+  mic_cfg.sample_rate = SAMPLE_RATE;
+  mic_cfg.stereo = false;
+  M5.Mic.config(mic_cfg);
+  M5.Mic.begin();
+
   mic.init();
 
   // M5.Display.setTextSize(2);
@@ -110,11 +151,17 @@ void setup()
   M5.Speaker.setVolume(200); // 0-255
   speaker.init();
 
+  ESP_SR_M5.onEvent(onSrEvent);
+  bool success = ESP_SR_M5.begin();
+  log_i("ESP_SR_M5.begin() = %d\n", success);
+
   wsClient.begin(SERVER_HOST, SERVER_PORT, SERVER_PATH);
   wsClient.onEvent(handleWsEvent);
   wsClient.setReconnectInterval(2000);
   wsClient.enableHeartbeat(15000, 3000, 2);
 }
+
+#define AUDIO_SAMPLE_SIZE 256
 
 void loop()
 {
@@ -123,23 +170,35 @@ void loop()
 
   if (stateMachine.isIdle())
   {
-    M5.Display.setCursor(0, 40);
-    M5.Display.println("Hold Btn A: start / Release: stop");
+    static uint32_t loop_count = 0;
+    static uint32_t error_count = 0;
+    static uint32_t last_log_time = 0;
+    static int16_t audio_buf[AUDIO_SAMPLE_SIZE];
 
-    if (M5.BtnA.wasPressed())
+    bool success = M5.Mic.record(audio_buf, AUDIO_SAMPLE_SIZE, SAMPLE_RATE);
+    if(success)
     {
-      log_i("pressing Btn A: start streaming");
-      // TTS 受信・再生状態を初期化
-      speaker.reset();
+      ESP_SR_M5.feedAudio(audio_buf, AUDIO_SAMPLE_SIZE);
 
-      if (mic.startStreaming())
+      uint32_t now = millis();
+      if (now - last_log_time >= 1000)
       {
-        M5.Display.println("Streaming...");
-        stateMachine.setState(StateMachine::Streaming);
+        int32_t sum = 0;
+        for (int i = 0; i < 10; i++)
+        {
+          sum += abs(audio_buf[i]);
+        }
+        log_i("loop: count=%d, avg_level=%d, errors=%d, interval=%dms", loop_count, sum / 10, error_count, now - last_log_time);
+        last_log_time = now;
       }
-      else
+      loop_count++;
+    }
+    else
+    {
+      error_count++;
+      if (error_count % 100 == 0)
       {
-        M5.Display.println("WS not connected (start)");
+        log_w("WARNING: M5.Mic.record failed, count=%d\n", error_count);
       }
     }
   }

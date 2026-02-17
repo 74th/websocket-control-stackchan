@@ -13,10 +13,10 @@ public:
 
   StateMachine() = default;
 
-  void setState(State s) { state_ = s; }
-  State getState() const { return state_; }
-  bool isIdle() const { return state_ == Idle; }
-  bool isStreaming() const { return state_ == Streaming; }
+  void setState(State s);
+  State getState() const;
+  bool isIdle() const;
+  bool isStreaming() const;
 
 private:
   State state_ = Idle;
