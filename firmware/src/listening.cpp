@@ -16,10 +16,12 @@ void Listening::init()
   if (!events_registered_)
   {
     events_registered_ = true;
-    state_.addStateEntryEvent(StateMachine::Listening, [](StateMachine::State, StateMachine::State) {
+    state_.addStateEntryEvent(StateMachine::Listening, [this](StateMachine::State, StateMachine::State) {
       M5.Mic.begin();
+      startStreaming();
     });
-    state_.addStateExitEvent(StateMachine::Listening, [](StateMachine::State, StateMachine::State) {
+    state_.addStateExitEvent(StateMachine::Listening, [this](StateMachine::State, StateMachine::State) {
+      stopStreaming();
       M5.Mic.end();
     });
   }

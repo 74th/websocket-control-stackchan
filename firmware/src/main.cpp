@@ -28,7 +28,7 @@ StateMachine stateMachine;
 static WebSocketsClient wsClient;
 static Speaker speaker(stateMachine);
 static Listening listening(wsClient, stateMachine, SAMPLE_RATE);
-static WakeUpWord wakeUpWord(listening, stateMachine);
+static WakeUpWord wakeUpWord(stateMachine);
 
 // Protocol types are defined in include/protocols.hpp
 

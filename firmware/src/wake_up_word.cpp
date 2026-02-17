@@ -1,7 +1,6 @@
 #include <M5Unified.h>
 #include <ESP_SR_M5Unified.h>
 #include "wake_up_word.hpp"
-#include "listening.hpp"
 
 namespace
 {
@@ -49,24 +48,8 @@ void WakeUpWord::handleSrEvent(sr_event_t event, int command_id, int phrase_id)
   {
   case SR_EVENT_WAKEWORD:
     log_i("WakeWord Detected!");
-    if (listening_.startStreaming())
-    {
-      log_i("Started Mic streaming");
-      M5.Display.fillScreen(TFT_GREEN);
-      M5.Display.setCursor(10, 10);
-      M5.Display.setTextSize(3);
-      M5.Display.setTextColor(TFT_BLACK, TFT_GREEN);
-      M5.Display.println("Streaming...");
-      state_.setState(StateMachine::Listening);
-    }
-    else
-    {
-      log_i("Failed to start Mic streaming");
-      M5.Display.fillScreen(TFT_YELLOW);
-      M5.Display.setCursor(10, 10);
-      M5.Display.setTextSize(3);
-      M5.Display.setTextColor(TFT_BLACK, TFT_YELLOW);
-    }
+    log_i("WakeWord Detected: entering Listening state");
+    state_.setState(StateMachine::Listening);
     break;
   default:
     log_i("Unknown Event: %d", event);
