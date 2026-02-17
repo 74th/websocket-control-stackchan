@@ -1,18 +1,29 @@
-#include "mic.hpp"
+#include "listening.hpp"
 #include <algorithm>
 #include <cstring>
 #include <vector>
 #include <cstdlib>
 
-Mic::Mic(WebSocketsClient &ws, StateMachine &sm, int sampleRate)
+Listening::Listening(WebSocketsClient &ws, StateMachine &sm, int sampleRate)
     : ws_(ws), state_(sm), sample_rate_(sampleRate),
       chunk_samples_(static_cast<size_t>(sampleRate) / 2),
       ring_capacity_samples_(static_cast<size_t>(sampleRate) * 2)
 {
 }
 
-void Mic::init()
+void Listening::init()
 {
+  if (!events_registered_)
+  {
+    events_registered_ = true;
+    state_.addStateEntryEvent(StateMachine::Listening, [](StateMachine::State, StateMachine::State) {
+      M5.Mic.begin();
+    });
+    state_.addStateExitEvent(StateMachine::Listening, [](StateMachine::State, StateMachine::State) {
+      M5.Mic.end();
+    });
+  }
+
   if (ring_buffer_)
   {
     heap_caps_free(ring_buffer_);
@@ -28,18 +39,17 @@ void Mic::init()
   streaming_ = false;
 }
 
-bool Mic::startStreaming()
+bool Listening::startStreaming()
 {
   ring_write_ = ring_read_ = ring_available_ = 0;
   seq_counter_ = 0;
   last_level_ = 0;
   silence_since_ms_ = 0;
-  M5.Mic.begin();
   streaming_ = true;
   return sendPacket(MessageType::START, nullptr, 0);
 }
 
-bool Mic::stopStreaming()
+bool Listening::stopStreaming()
 {
   if (!streaming_)
   {
@@ -68,11 +78,10 @@ bool Mic::stopStreaming()
 
   streaming_ = false;
   ok = sendPacket(MessageType::END, nullptr, 0) && ok;
-  M5.Mic.end();
   return ok;
 }
 
-bool Mic::loop()
+bool Listening::loop()
 {
   if (!streaming_)
   {
@@ -108,7 +117,7 @@ bool Mic::loop()
   return true;
 }
 
-void Mic::updateLevelStats(const int16_t *samples, size_t sampleCount)
+void Listening::updateLevelStats(const int16_t *samples, size_t sampleCount)
 {
   if (sampleCount == 0)
   {
@@ -136,7 +145,7 @@ void Mic::updateLevelStats(const int16_t *samples, size_t sampleCount)
   }
 }
 
-bool Mic::shouldStopForSilence() const
+bool Listening::shouldStopForSilence() const
 {
   if (silence_since_ms_ == 0)
   {
@@ -152,7 +161,7 @@ bool Mic::shouldStopForSilence() const
   return elapsed >= kSilenceDurationMs;
 }
 
-bool Mic::sendPacket(MessageType type, const int16_t *samples, size_t sampleCount)
+bool Listening::sendPacket(MessageType type, const int16_t *samples, size_t sampleCount)
 {
   if ((WiFi.status() != WL_CONNECTED) || !ws_.isConnected())
   {
@@ -178,7 +187,7 @@ bool Mic::sendPacket(MessageType type, const int16_t *samples, size_t sampleCoun
   return true;
 }
 
-void Mic::ringPush(const int16_t *src, size_t samples)
+void Listening::ringPush(const int16_t *src, size_t samples)
 {
   if (samples == 0)
   {
@@ -209,7 +218,7 @@ void Mic::ringPush(const int16_t *src, size_t samples)
   ring_available_ += samples;
 }
 
-size_t Mic::ringPop(int16_t *dst, size_t samples)
+size_t Listening::ringPop(int16_t *dst, size_t samples)
 {
   size_t to_read = std::min(samples, ring_available_);
   if (to_read == 0)

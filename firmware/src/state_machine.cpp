@@ -9,8 +9,8 @@ const char *stateToString(StateMachine::State s)
 	{
 	case StateMachine::Idle:
 		return "Idle";
-	case StateMachine::Streaming:
-		return "Streaming";
+	case StateMachine::Listening:
+		return "Listening";
 	default:
 		return "Unknown";
 	}
@@ -48,9 +48,9 @@ bool StateMachine::isIdle() const
 	return state_ == Idle;
 }
 
-bool StateMachine::isStreaming() const
+bool StateMachine::isListening() const
 {
-	return state_ == Streaming;
+	return state_ == Listening;
 }
 
 void StateMachine::addStateEntryEvent(State state, Callback cb)

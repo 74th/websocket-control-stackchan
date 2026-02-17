@@ -7,10 +7,10 @@
 #include "protocols.hpp"
 #include "state_machine.hpp"
 
-class Mic
+class Listening
 {
 public:
-  Mic(WebSocketsClient &ws, StateMachine &sm, int sampleRate);
+  Listening(WebSocketsClient &ws, StateMachine &sm, int sampleRate);
 
   // allocate buffers / reset counters; call once from setup
   void init();
@@ -51,6 +51,7 @@ private:
 
   uint16_t seq_counter_ = 0;
   bool streaming_ = false;
+  bool events_registered_ = false;
 
   // 無音判定関連
   int32_t last_level_ = 0;

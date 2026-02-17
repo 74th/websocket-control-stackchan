@@ -11,7 +11,7 @@ public:
   enum State : uint8_t
   {
     Idle = 0,
-    Streaming = 1,
+    Listening = 1,
   };
 
   StateMachine() = default;
@@ -19,7 +19,7 @@ public:
   void setState(State s);
   State getState() const;
   bool isIdle() const;
-  bool isStreaming() const;
+  bool isListening() const;
 
   using Callback = std::function<void(State prev, State next)>;
   void addStateEntryEvent(State state, Callback cb);

@@ -11,7 +11,7 @@
 #include "../include/protocols.hpp"
 #include "../include/state_machine.hpp"
 #include "../include/speaker.hpp"
-#include "../include/mic.hpp"
+#include "../include/listening.hpp"
 #include "../include/wake_up_word.hpp"
 
 //////////////////// 設定 ////////////////////
@@ -27,8 +27,8 @@ StateMachine stateMachine;
 
 static WebSocketsClient wsClient;
 static Speaker speaker(stateMachine);
-static Mic mic(wsClient, stateMachine, SAMPLE_RATE);
-static WakeUpWord wakeUpWord(mic, stateMachine);
+static Listening listening(wsClient, stateMachine, SAMPLE_RATE);
+static WakeUpWord wakeUpWord(listening, stateMachine);
 
 // Protocol types are defined in include/protocols.hpp
 
@@ -106,7 +106,7 @@ void setup()
   M5.Mic.config(mic_cfg);
   M5.Mic.begin();
 
-  mic.init();
+  listening.init();
 
   // M5.Display.setTextSize(2);
   M5.Display.println("CoreS3 SE - AI Home Agent (WS)");
@@ -167,9 +167,9 @@ void loop()
       }
     }
   }
-  else if (stateMachine.isStreaming())
+  else if (stateMachine.isListening())
   {
-    if (!mic.loop())
+    if (!listening.loop())
     {
       M5.Display.println("WS send failed (data)");
       log_i("WS send failed (data)");
@@ -178,14 +178,14 @@ void loop()
     }
 
     // 無音が3秒続いたら終了
-    if (mic.shouldStopForSilence())
+    if (listening.shouldStopForSilence())
     {
-      log_i("Auto stop: silence detected (avg=%ld)", static_cast<long>(mic.getLastLevel()));
+      log_i("Auto stop: silence detected (avg=%ld)", static_cast<long>(listening.getLastLevel()));
       M5.Display.fillScreen(TFT_BLACK);
       M5.Display.setCursor(10, 10);
       M5.Display.setTextSize(3);
       M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
-      if (!mic.stopStreaming())
+      if (!listening.stopStreaming())
       {
         M5.Display.println("WS send failed (tail/end)");
         log_i("WS send failed (tail/end)");

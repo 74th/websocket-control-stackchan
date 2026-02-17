@@ -1,7 +1,7 @@
 #include <M5Unified.h>
 #include <ESP_SR_M5Unified.h>
 #include "wake_up_word.hpp"
-#include "mic.hpp"
+#include "listening.hpp"
 
 namespace
 {
@@ -16,13 +16,15 @@ void WakeUpWord::init()
   bool success = ESP_SR_M5.begin();
   log_i("ESP_SR_M5.begin() = %d", success);
 
-  // Idle→Streaming への遷移時に SR を一時停止
+  // Idle→Listening への遷移時にマイクを止めて SR を一時停止
   state_.addStateExitEvent(StateMachine::Idle, [](StateMachine::State, StateMachine::State) {
+    M5.Mic.end();
     ESP_SR_M5.pause();
   });
 
-  // Streaming→Idle に戻ったら WakeWord モードで再開
+  // Listening→Idle に戻ったら WakeWord モードで再開
   state_.addStateEntryEvent(StateMachine::Idle, [](StateMachine::State, StateMachine::State) {
+    M5.Mic.begin();
     ESP_SR_M5.setMode(SR_MODE_WAKEWORD);
     ESP_SR_M5.resume();
   });
@@ -47,7 +49,7 @@ void WakeUpWord::handleSrEvent(sr_event_t event, int command_id, int phrase_id)
   {
   case SR_EVENT_WAKEWORD:
     log_i("WakeWord Detected!");
-    if (mic_.startStreaming())
+    if (listening_.startStreaming())
     {
       log_i("Started Mic streaming");
       M5.Display.fillScreen(TFT_GREEN);
@@ -55,7 +57,7 @@ void WakeUpWord::handleSrEvent(sr_event_t event, int command_id, int phrase_id)
       M5.Display.setTextSize(3);
       M5.Display.setTextColor(TFT_BLACK, TFT_GREEN);
       M5.Display.println("Streaming...");
-      state_.setState(StateMachine::Streaming);
+      state_.setState(StateMachine::Listening);
     }
     else
     {
