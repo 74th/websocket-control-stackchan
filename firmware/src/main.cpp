@@ -216,6 +216,10 @@ void loop()
     if (mic.shouldStopForSilence())
     {
       log_i("Auto stop: silence detected (avg=%ld)", static_cast<long>(mic.getLastLevel()));
+      M5.Display.fillScreen(TFT_BLACK);
+      M5.Display.setCursor(10, 10);
+      M5.Display.setTextSize(3);
+      M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
       if (!mic.stopStreaming())
       {
         M5.Display.println("WS send failed (tail/end)");
@@ -223,6 +227,7 @@ void loop()
       }
       stateMachine.setState(StateMachine::Idle);
       M5.Display.println("Stopped (silence)");
+      ESP_SR_M5.resume();
 
       // 終了直後のTTS再生でMic/Speakerが競合しないよう、少し待つ
       delay(20);
