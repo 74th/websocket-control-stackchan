@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cstring>
 #include <vector>
+#include <cstdlib>
 
 Mic::Mic(WebSocketsClient &ws, StateMachine &sm, int sampleRate)
     : ws_(ws), state_(sm), sample_rate_(sampleRate),
@@ -31,6 +32,8 @@ bool Mic::startStreaming()
 {
   ring_write_ = ring_read_ = ring_available_ = 0;
   seq_counter_ = 0;
+  last_level_ = 0;
+  silence_since_ms_ = 0;
   M5.Mic.begin();
   streaming_ = true;
   return sendPacket(MessageType::START, nullptr, 0);
@@ -38,16 +41,16 @@ bool Mic::startStreaming()
 
 bool Mic::stopStreaming()
 {
-  bool ok = sendPacket(MessageType::END, nullptr, 0);
-  M5.Mic.end();
-  return ok;
+  if (!streaming_)
   {
     return true;
   }
-  // flush remaining samples
+
+  // flush remaining samples before END
+  bool ok = true;
   if (ring_available_ > 0)
   {
-    const size_t tail_capacity = chunk_samples_; // 1チャンク分を丸ごと持てるサイズ
+    const size_t tail_capacity = chunk_samples_;
     std::vector<int16_t> tail_buf(tail_capacity);
     size_t to_send = ring_available_;
     while (to_send > 0)
@@ -56,14 +59,17 @@ bool Mic::stopStreaming()
       size_t sent = ringPop(tail_buf.data(), chunk);
       if (!sendPacket(MessageType::DATA, tail_buf.data(), sent))
       {
-        streaming_ = false;
-        return false;
+        ok = false;
+        break;
       }
       to_send -= sent;
     }
   }
+
   streaming_ = false;
-  return sendPacket(MessageType::END, nullptr, 0);
+  ok = sendPacket(MessageType::END, nullptr, 0) && ok;
+  M5.Mic.end();
+  return ok;
 }
 
 bool Mic::loop()
@@ -79,6 +85,7 @@ bool Mic::loop()
     if (M5.Mic.record(mic_buf, mic_read_samples_, sample_rate_))
     {
       ringPush(mic_buf, mic_read_samples_);
+      updateLevelStats(mic_buf, mic_read_samples_);
     }
   }
 
@@ -99,6 +106,50 @@ bool Mic::loop()
   }
 
   return true;
+}
+
+void Mic::updateLevelStats(const int16_t *samples, size_t sampleCount)
+{
+  if (sampleCount == 0)
+  {
+    return;
+  }
+
+  int64_t sum = 0;
+  for (size_t i = 0; i < sampleCount; ++i)
+  {
+    sum += std::abs(samples[i]);
+  }
+  last_level_ = static_cast<int32_t>(sum / static_cast<int64_t>(sampleCount));
+
+  uint32_t now = millis();
+  if (last_level_ <= kSilenceLevelThreshold)
+  {
+    if (silence_since_ms_ == 0)
+    {
+      silence_since_ms_ = now;
+    }
+  }
+  else
+  {
+    silence_since_ms_ = 0;
+  }
+}
+
+bool Mic::shouldStopForSilence() const
+{
+  if (silence_since_ms_ == 0)
+  {
+    return false;
+  }
+
+  if (last_level_ > kSilenceLevelThreshold)
+  {
+    return false;
+  }
+
+  uint32_t elapsed = millis() - silence_since_ms_;
+  return elapsed >= kSilenceDurationMs;
 }
 
 bool Mic::sendPacket(MessageType type, const int16_t *samples, size_t sampleCount)

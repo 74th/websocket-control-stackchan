@@ -212,17 +212,17 @@ void loop()
       return;
     }
 
-    // ボタンを離したら残りを送って終了メッセージ
-    if (M5.BtnA.wasReleased())
+    // 無音が3秒続いたら終了
+    if (mic.shouldStopForSilence())
     {
-      log_i("Btn A released: stop streaming");
+      log_i("Auto stop: silence detected (avg=%ld)", static_cast<long>(mic.getLastLevel()));
       if (!mic.stopStreaming())
       {
         M5.Display.println("WS send failed (tail/end)");
         log_i("WS send failed (tail/end)");
       }
       stateMachine.setState(StateMachine::Idle);
-      M5.Display.println("Stopped. Hold Btn A to start.");
+      M5.Display.println("Stopped (silence)");
 
       // 終了直後のTTS再生でMic/Speakerが競合しないよう、少し待つ
       delay(20);
