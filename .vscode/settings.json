@@ -1,5 +1,16 @@
 {
     "chat.tools.terminal.autoApprove": {
         "pio": true
+    },
+    "files.associations": {
+        "*.jinja": "yaml",
+        "*.md": "markdown",
+        "bashrc": "shellscript",
+        "*.service": "plaintext",
+        "unordered_map": "cpp",
+        "istream": "cpp",
+        "numeric": "cpp",
+        "ostream": "cpp",
+        "sstream": "cpp"
     }
 }

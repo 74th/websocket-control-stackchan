@@ -2,7 +2,6 @@
 // 事前に: Tools→PSRAM有効（SEはPSRAM無しでも動くよう小さめバッファ）
 
 #include <M5Unified.h>
-#include <ESP_SR_M5Unified.h>
 #include <WiFi.h>
 #include <WebSocketsClient.h>
 #include <algorithm>
@@ -13,6 +12,7 @@
 #include "../include/state_machine.hpp"
 #include "../include/speaker.hpp"
 #include "../include/mic.hpp"
+#include "../include/wake_up_word.hpp"
 
 //////////////////// 設定 ////////////////////
 const char *WIFI_SSID = WIFI_SSID_H;
@@ -28,18 +28,7 @@ StateMachine stateMachine;
 static WebSocketsClient wsClient;
 static Speaker speaker(stateMachine);
 static Mic mic(wsClient, stateMachine, SAMPLE_RATE);
-
-void setupStateMachineEvents()
-{
-  stateMachine.addStateExitEvent(StateMachine::Idle, [](StateMachine::State, StateMachine::State) {
-    ESP_SR_M5.pause();
-  });
-
-  stateMachine.addStateEntryEvent(StateMachine::Idle, [](StateMachine::State, StateMachine::State) {
-    ESP_SR_M5.setMode(SR_MODE_WAKEWORD);
-    ESP_SR_M5.resume();
-  });
-}
+static WakeUpWord wakeUpWord(mic, speaker, stateMachine);
 
 // Protocol types are defined in include/protocols.hpp
 
@@ -107,38 +96,6 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
   }
 }
 
-void onSrEvent(sr_event_t event, int command_id, int phrase_id)
-{
-  switch(event)
-  {
-    case SR_EVENT_WAKEWORD:
-    log_i("WakeWord Detected!");
-    speaker.reset();
-
-    if (mic.startStreaming())
-    {
-      log_i("Started Mic streaming");
-      M5.Display.fillScreen(TFT_GREEN);
-      M5.Display.setCursor(10, 10);
-      M5.Display.setTextSize(3);
-      M5.Display.setTextColor(TFT_BLACK, TFT_GREEN);
-      M5.Display.println("Streaming...");
-      stateMachine.setState(StateMachine::Streaming);
-    }
-    else
-    {
-      log_i("Failed to start Mic streaming");
-      M5.Display.fillScreen(TFT_YELLOW);
-      M5.Display.setCursor(10, 10);
-      M5.Display.setTextSize(3);
-      M5.Display.setTextColor(TFT_BLACK, TFT_YELLOW);
-    }
-    break;
-  default:
-    log_i("Unknown Event: %d", event);
-  }
-}
-
 void setup()
 {
   auto cfg = M5.config();
@@ -161,11 +118,7 @@ void setup()
   M5.Speaker.setVolume(200); // 0-255
   speaker.init();
 
-  ESP_SR_M5.onEvent(onSrEvent);
-  bool success = ESP_SR_M5.begin();
-  log_i("ESP_SR_M5.begin() = %d\n", success);
-
-  setupStateMachineEvents();
+  wakeUpWord.init();
 
   wsClient.begin(SERVER_HOST, SERVER_PORT, SERVER_PATH);
   wsClient.onEvent(handleWsEvent);
@@ -190,7 +143,7 @@ void loop()
     bool success = M5.Mic.record(audio_buf, AUDIO_SAMPLE_SIZE, SAMPLE_RATE);
     if(success)
     {
-      ESP_SR_M5.feedAudio(audio_buf, AUDIO_SAMPLE_SIZE);
+      wakeUpWord.feedAudio(audio_buf, AUDIO_SAMPLE_SIZE);
 
       uint32_t now = millis();
       if (now - last_log_time >= 1000)
