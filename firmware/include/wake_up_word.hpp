@@ -6,12 +6,11 @@
 #include "state_machine.hpp"
 
 class Mic;
-class Speaker;
 
 class WakeUpWord
 {
 public:
-  WakeUpWord(Mic &mic, Speaker &speaker, StateMachine &state) : mic_(mic), speaker_(speaker), state_(state) {}
+  WakeUpWord(Mic &mic, StateMachine &state) : mic_(mic), state_(state) {}
 
   // ESP_SR を初期化し、ステートマシンのエントリ/エグジットイベントや SR のイベントハンドラを登録する
   void init();
@@ -24,6 +23,5 @@ private:
   void handleSrEvent(sr_event_t event, int command_id, int phrase_id);
 
   Mic &mic_;
-  Speaker &speaker_;
   StateMachine &state_;
 };

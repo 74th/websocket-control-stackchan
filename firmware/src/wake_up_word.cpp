@@ -2,7 +2,6 @@
 #include <ESP_SR_M5Unified.h>
 #include "wake_up_word.hpp"
 #include "mic.hpp"
-#include "speaker.hpp"
 
 namespace
 {
@@ -48,8 +47,6 @@ void WakeUpWord::handleSrEvent(sr_event_t event, int command_id, int phrase_id)
   {
   case SR_EVENT_WAKEWORD:
     log_i("WakeWord Detected!");
-    speaker_.reset();
-
     if (mic_.startStreaming())
     {
       log_i("Started Mic streaming");
