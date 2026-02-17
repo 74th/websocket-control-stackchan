@@ -29,6 +29,18 @@ static WebSocketsClient wsClient;
 static Speaker speaker(stateMachine);
 static Mic mic(wsClient, stateMachine, SAMPLE_RATE);
 
+void setupStateMachineEvents()
+{
+  stateMachine.addStateExitEvent(StateMachine::Idle, [](StateMachine::State, StateMachine::State) {
+    ESP_SR_M5.pause();
+  });
+
+  stateMachine.addStateEntryEvent(StateMachine::Idle, [](StateMachine::State, StateMachine::State) {
+    ESP_SR_M5.setMode(SR_MODE_WAKEWORD);
+    ESP_SR_M5.resume();
+  });
+}
+
 // Protocol types are defined in include/protocols.hpp
 
 void connectWiFi()
@@ -112,8 +124,6 @@ void onSrEvent(sr_event_t event, int command_id, int phrase_id)
       M5.Display.setTextColor(TFT_BLACK, TFT_GREEN);
       M5.Display.println("Streaming...");
       stateMachine.setState(StateMachine::Streaming);
-
-      ESP_SR_M5.pause();
     }
     else
     {
@@ -154,6 +164,8 @@ void setup()
   ESP_SR_M5.onEvent(onSrEvent);
   bool success = ESP_SR_M5.begin();
   log_i("ESP_SR_M5.begin() = %d\n", success);
+
+  setupStateMachineEvents();
 
   wsClient.begin(SERVER_HOST, SERVER_PORT, SERVER_PATH);
   wsClient.onEvent(handleWsEvent);
@@ -227,7 +239,6 @@ void loop()
       }
       stateMachine.setState(StateMachine::Idle);
       M5.Display.println("Stopped (silence)");
-      ESP_SR_M5.resume();
 
       // 終了直後のTTS再生でMic/Speakerが競合しないよう、少し待つ
       delay(20);
