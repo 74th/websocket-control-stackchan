@@ -117,7 +117,7 @@ void Listening::loop()
     if (!sendPacket(MessageType::DATA, send_buf.data(), got))
     {
       streaming_ = false;
-      M5.Display.println("WS send failed (data)");
+      // M5.Display.println("WS send failed (data)");
       log_i("WS send failed (data)");
       state_.setState(StateMachine::Idle);
       return;
@@ -128,17 +128,17 @@ void Listening::loop()
   if (shouldStopForSilence())
   {
     log_i("Auto stop: silence detected (avg=%ld)", static_cast<long>(last_level_));
-    M5.Display.fillScreen(TFT_BLACK);
-    M5.Display.setCursor(10, 10);
-    M5.Display.setTextSize(3);
-    M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
+    // M5.Display.fillScreen(TFT_BLACK);
+    // M5.Display.setCursor(10, 10);
+    // M5.Display.setTextSize(3);
+    // M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
     if (!stopStreaming())
     {
-      M5.Display.println("WS send failed (tail/end)");
+      // M5.Display.println("WS send failed (tail/end)");
       log_i("WS send failed (tail/end)");
     }
     state_.setState(StateMachine::Idle);
-    M5.Display.println("Stopped (silence)");
+    // M5.Display.println("Stopped (silence)");
 
     // 終了直後のTTS再生でMic/Speakerが競合しないよう、少し待つ
     delay(20);

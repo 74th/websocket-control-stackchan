@@ -66,7 +66,7 @@ void Speaking::handleWavMessage(const WsHeader &hdr, const uint8_t *body, size_t
     {
       log_w("TTS START without meta, fallback sr=%u ch=%u", (unsigned)sample_rate_, (unsigned)channels_);
     }
-    M5.Display.println("Recv TTS START");
+    // M5.Display.println("Recv TTS START");
     log_i("TTS stream start seq=%u", (unsigned)hdr.seq);
     return;
   }
@@ -75,7 +75,7 @@ void Speaking::handleWavMessage(const WsHeader &hdr, const uint8_t *body, size_t
   {
     if (!streaming_)
     {
-      M5.Display.println("TTS DATA without START");
+      // M5.Display.println("TTS DATA without START");
       return;
     }
 
@@ -101,7 +101,7 @@ void Speaking::handleWavMessage(const WsHeader &hdr, const uint8_t *body, size_t
   {
     if (!streaming_)
     {
-      M5.Display.println("TTS END without START");
+      // M5.Display.println("TTS END without START");
       return;
     }
 
@@ -112,7 +112,7 @@ void Speaking::handleWavMessage(const WsHeader &hdr, const uint8_t *body, size_t
     if (!buf.empty())
     {
       playing_ = true;
-      M5.Display.printf("TTS ready: %u bytes\n", (unsigned)buf.size());
+      // M5.Display.printf("TTS ready: %u bytes\n", (unsigned)buf.size());
 
       const int16_t *samples = reinterpret_cast<const int16_t *>(buf.data());
       size_t sample_len = buf.size() / sizeof(int16_t);
@@ -135,6 +135,6 @@ void Speaking::loop()
     reset();
     playing_ = false;
     streaming_ = false;
-    M5.Display.println("TTS done.");
+    // M5.Display.println("TTS done.");
   }
 }

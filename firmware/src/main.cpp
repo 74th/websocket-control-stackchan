@@ -13,6 +13,7 @@
 #include "../include/speaking.hpp"
 #include "../include/listening.hpp"
 #include "../include/wake_up_word.hpp"
+#include "../include/display.hpp"
 
 //////////////////// 設定 ////////////////////
 const char *WIFI_SSID = WIFI_SSID_H;
@@ -29,6 +30,7 @@ static WebSocketsClient wsClient;
 static Speaking speaking(stateMachine);
 static Listening listening(wsClient, stateMachine, SAMPLE_RATE);
 static WakeUpWord wakeUpWord(stateMachine, SAMPLE_RATE);
+static Display display(stateMachine);
 
 // Protocol types are defined in include/protocols.hpp
 
@@ -47,11 +49,11 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
   switch (type)
   {
   case WStype_DISCONNECTED:
-    M5.Display.println("WS: disconnected");
+    // M5.Display.println("WS: disconnected");
     log_i("WS disconnected");
     break;
   case WStype_CONNECTED:
-    M5.Display.printf("WS: connected %s\n", SERVER_PATH);
+    // M5.Display.printf("WS: connected %s\n", SERVER_PATH);
     log_i("WS connected to %s", SERVER_PATH);
     break;
   case WStype_TEXT:
@@ -61,7 +63,7 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
   {
     if (length < sizeof(WsHeader))
     {
-      M5.Display.println("WS bin too short");
+      // M5.Display.println("WS bin too short");
       log_i("WS bin too short: %d", (int)length);
       break;
     }
@@ -71,7 +73,7 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
     size_t rx_payload_len = length - sizeof(WsHeader);
     if (rx_payload_len != rx.payloadBytes)
     {
-      M5.Display.println("WS payload len mismatch");
+      // M5.Display.println("WS payload len mismatch");
       log_i("WS payload len mismatch: expected=%u got=%u", (unsigned)rx.payloadBytes, (unsigned)rx_payload_len);
       break;
     }
@@ -85,7 +87,7 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
       speaking.handleWavMessage(rx, body, rx_payload_len);
       break;
     default:
-      M5.Display.printf("WS bin kind=%u len=%d\n", (unsigned)rx.kind, (int)length);
+      // M5.Display.printf("WS bin kind=%u len=%d\n", (unsigned)rx.kind, (int)length);
       break;
     }
 
@@ -108,12 +110,13 @@ void setup()
   listening.init();
   speaking.init();
   wakeUpWord.init();
+  display.init();
 
   // M5.Display.setTextSize(2);
-  M5.Display.println("CoreS3 SE - AI Home Agent (WS)");
+  // M5.Display.println("CoreS3 SE - AI Home Agent (WS)");
 
   connectWiFi();
-  M5.Display.printf("WiFi: %s\n", WiFi.localIP().toString().c_str());
+  // M5.Display.printf("WiFi: %s\n", WiFi.localIP().toString().c_str());
 
   // Mic/Speaking setup
   M5.Speaker.setVolume(200); // 0-255
@@ -169,4 +172,6 @@ void loop()
   default:
     break;
   }
+
+  display.loop();
 }
