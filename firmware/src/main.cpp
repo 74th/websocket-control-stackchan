@@ -112,11 +112,7 @@ void setup()
   wakeUpWord.init();
   display.init();
 
-  // M5.Display.setTextSize(2);
-  // M5.Display.println("CoreS3 SE - AI Home Agent (WS)");
-
   connectWiFi();
-  // M5.Display.printf("WiFi: %s\n", WiFi.localIP().toString().c_str());
 
   // Mic/Speaking setup
   M5.Speaker.setVolume(200); // 0-255
