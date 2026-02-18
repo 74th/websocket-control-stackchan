@@ -6,10 +6,10 @@
 #include "protocols.hpp"
 #include "state_machine.hpp"
 
-class Speaker
+class Speaking
 {
 public:
-  explicit Speaker(StateMachine &sm) : state_(sm) {}
+  explicit Speaking(StateMachine &sm) : state_(sm) {}
 
   // Initialize internal buffers/state (call once from setup)
   void init();

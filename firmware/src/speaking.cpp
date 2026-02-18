@@ -1,7 +1,7 @@
-#include "speaker.hpp"
+#include "speaking.hpp"
 #include <cstring>
 
-void Speaker::reset()
+void Speaking::reset()
 {
   buffer_[0].clear();
   buffer_[1].clear();
@@ -15,12 +15,12 @@ void Speaker::reset()
   channels_ = 1;
 }
 
-void Speaker::init()
+void Speaking::init()
 {
   reset();
 }
 
-void Speaker::handleWavMessage(const WsHeader &hdr, const uint8_t *body, size_t bodyLen)
+void Speaking::handleWavMessage(const WsHeader &hdr, const uint8_t *body, size_t bodyLen)
 {
   auto msgType = static_cast<MessageType>(hdr.messageType);
 
@@ -112,7 +112,7 @@ void Speaker::handleWavMessage(const WsHeader &hdr, const uint8_t *body, size_t 
   }
 }
 
-void Speaker::loop()
+void Speaking::loop()
 {
   if (playing_ && !M5.Speaker.isPlaying())
   {

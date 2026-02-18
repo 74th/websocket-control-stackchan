@@ -10,7 +10,7 @@
 #include "config.h"
 #include "../include/protocols.hpp"
 #include "../include/state_machine.hpp"
-#include "../include/speaker.hpp"
+#include "../include/speaking.hpp"
 #include "../include/listening.hpp"
 #include "../include/wake_up_word.hpp"
 
@@ -26,7 +26,7 @@ const int SAMPLE_RATE = 16000;           // 16kHz モノラル
 StateMachine stateMachine;
 
 static WebSocketsClient wsClient;
-static Speaker speaker(stateMachine);
+static Speaking speaking(stateMachine);
 static Listening listening(wsClient, stateMachine, SAMPLE_RATE);
 static WakeUpWord wakeUpWord(stateMachine);
 
@@ -82,7 +82,7 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
     switch (static_cast<MessageKind>(rx.kind))
     {
     case MessageKind::AudioWav:
-      speaker.handleWavMessage(rx, body, rx_payload_len);
+      speaking.handleWavMessage(rx, body, rx_payload_len);
       break;
     default:
       M5.Display.printf("WS bin kind=%u len=%d\n", (unsigned)rx.kind, (int)length);
@@ -114,9 +114,9 @@ void setup()
   connectWiFi();
   M5.Display.printf("WiFi: %s\n", WiFi.localIP().toString().c_str());
 
-  // Mic/Speaker setup
+  // Mic/Speaking setup
   M5.Speaker.setVolume(200); // 0-255
-  speaker.init();
+  speaking.init();
 
   wakeUpWord.init();
 
@@ -198,6 +198,6 @@ void loop()
     }
   }
 
-  // ---- Downlink TTS playback (handled by Speaker) ----
-  speaker.loop();
+  // ---- Downlink TTS playback (handled by Speaking) ----
+  speaking.loop();
 }
