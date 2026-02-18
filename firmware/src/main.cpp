@@ -38,6 +38,7 @@ namespace
 uint16_t g_uplink_seq = 0;
 uint32_t g_last_comm_ms = 0;
 constexpr uint32_t kCommTimeoutMs = 60000;
+bool g_has_connected_once = false;
 
 void markCommunicationActive()
 {
@@ -162,10 +163,19 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
   case WStype_DISCONNECTED:
     // M5.Display.println("WS: disconnected");
     log_i("WS disconnected");
+    if (g_has_connected_once)
+    {
+      stateMachine.setState(StateMachine::Disconnected);
+    }
     break;
   case WStype_CONNECTED:
     // M5.Display.printf("WS: connected %s\n", SERVER_PATH);
     log_i("WS connected to %s", SERVER_PATH);
+    if (stateMachine.getState() == StateMachine::Disconnected)
+    {
+      stateMachine.setState(StateMachine::Idle);
+    }
+    g_has_connected_once = true;
     markCommunicationActive();
     notifyCurrentState(stateMachine.getState());
     break;
@@ -307,6 +317,9 @@ void loop()
     break;
   case StateMachine::Speaking:
     speaking.loop();
+    break;
+  case StateMachine::Disconnected:
+    // Wait for WS reconnect.
     break;
   default:
     break;
