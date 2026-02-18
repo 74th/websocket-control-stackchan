@@ -13,6 +13,7 @@
 #include "../include/speaking.hpp"
 #include "../include/listening.hpp"
 #include "../include/wake_up_word.hpp"
+#include "../include/display.hpp"
 
 //////////////////// 設定 ////////////////////
 const char *WIFI_SSID = WIFI_SSID_H;
@@ -29,8 +30,40 @@ static WebSocketsClient wsClient;
 static Speaking speaking(stateMachine);
 static Listening listening(wsClient, stateMachine, SAMPLE_RATE);
 static WakeUpWord wakeUpWord(stateMachine, SAMPLE_RATE);
+static Display display(stateMachine);
 
 // Protocol types are defined in include/protocols.hpp
+namespace
+{
+bool applyRemoteStateCommand(const uint8_t *body, size_t bodyLen)
+{
+  if (body == nullptr || bodyLen < 1)
+  {
+    log_w("StateCmd payload too short: %u", static_cast<unsigned>(bodyLen));
+    return false;
+  }
+
+  RemoteState target = static_cast<RemoteState>(body[0]);
+  switch (target)
+  {
+  case RemoteState::Idle:
+    stateMachine.setState(StateMachine::Idle);
+    return true;
+  case RemoteState::Listening:
+    stateMachine.setState(StateMachine::Listening);
+    return true;
+  case RemoteState::Thinking:
+    stateMachine.setState(StateMachine::Thinking);
+    return true;
+  case RemoteState::Speaking:
+    stateMachine.setState(StateMachine::Speaking);
+    return true;
+  default:
+    log_w("Unknown remote state: %u", static_cast<unsigned>(body[0]));
+    return false;
+  }
+}
+} // namespace
 
 void connectWiFi()
 {
@@ -47,11 +80,11 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
   switch (type)
   {
   case WStype_DISCONNECTED:
-    M5.Display.println("WS: disconnected");
+    // M5.Display.println("WS: disconnected");
     log_i("WS disconnected");
     break;
   case WStype_CONNECTED:
-    M5.Display.printf("WS: connected %s\n", SERVER_PATH);
+    // M5.Display.printf("WS: connected %s\n", SERVER_PATH);
     log_i("WS connected to %s", SERVER_PATH);
     break;
   case WStype_TEXT:
@@ -61,7 +94,7 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
   {
     if (length < sizeof(WsHeader))
     {
-      M5.Display.println("WS bin too short");
+      // M5.Display.println("WS bin too short");
       log_i("WS bin too short: %d", (int)length);
       break;
     }
@@ -71,7 +104,7 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
     size_t rx_payload_len = length - sizeof(WsHeader);
     if (rx_payload_len != rx.payloadBytes)
     {
-      M5.Display.println("WS payload len mismatch");
+      // M5.Display.println("WS payload len mismatch");
       log_i("WS payload len mismatch: expected=%u got=%u", (unsigned)rx.payloadBytes, (unsigned)rx_payload_len);
       break;
     }
@@ -84,8 +117,18 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
     case MessageKind::AudioWav:
       speaking.handleWavMessage(rx, body, rx_payload_len);
       break;
+    case MessageKind::StateCmd:
+      if (static_cast<MessageType>(rx.messageType) == MessageType::DATA)
+      {
+        applyRemoteStateCommand(body, rx_payload_len);
+      }
+      else
+      {
+        log_w("StateCmd unsupported msgType=%u", static_cast<unsigned>(rx.messageType));
+      }
+      break;
     default:
-      M5.Display.printf("WS bin kind=%u len=%d\n", (unsigned)rx.kind, (int)length);
+      // M5.Display.printf("WS bin kind=%u len=%d\n", (unsigned)rx.kind, (int)length);
       break;
     }
 
@@ -108,12 +151,9 @@ void setup()
   listening.init();
   speaking.init();
   wakeUpWord.init();
-
-  // M5.Display.setTextSize(2);
-  M5.Display.println("CoreS3 SE - AI Home Agent (WS)");
+  display.init();
 
   connectWiFi();
-  M5.Display.printf("WiFi: %s\n", WiFi.localIP().toString().c_str());
 
   // Mic/Speaking setup
   M5.Speaker.setVolume(200); // 0-255
@@ -163,10 +203,15 @@ void loop()
   case StateMachine::Listening:
     listening.loop();
     break;
+  case StateMachine::Thinking:
+    // Wait for server side command / audio stream.
+    break;
   case StateMachine::Speaking:
     speaking.loop();
     break;
   default:
     break;
   }
+
+  display.loop();
 }

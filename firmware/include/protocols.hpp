@@ -15,6 +15,7 @@ enum class MessageKind : uint8_t
 {
 	AudioPcm = 1, // uplink PCM16LE stream (client -> server)
 	AudioWav = 2, // downlink WAV bytes (server -> client)
+	StateCmd = 3, // state transition command (server -> client)
 };
 
 enum class MessageType : uint8_t
@@ -31,4 +32,14 @@ struct __attribute__((packed)) WsHeader
 	uint8_t reserved;    // 0 (flags/reserved)
 	uint16_t seq;        // sequence number
 	uint16_t payloadBytes; // bytes following the header
+};
+
+// payload for kind=StateCmd, messageType=DATA
+// 1 byte: target state id (matches StateMachine::State)
+enum class RemoteState : uint8_t
+{
+	Idle = 0,
+	Listening = 1,
+	Thinking = 2,
+	Speaking = 3,
 };

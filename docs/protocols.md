@@ -14,6 +14,7 @@
 enum class MessageKind : uint8_t {
   AudioPcm = 1, // クライアント→サーバ（PCM16LE）
   AudioWav = 2, // サーバ→クライアント（WAV バイト列）
+  StateCmd = 3, // サーバ→クライアント（状態遷移指示）
 };
 
 enum class MessageType : uint8_t {
@@ -45,18 +46,30 @@ struct __attribute__((packed)) WsHeader {
 ### Downlink: kind = AudioWav (2)
 
 - 方向: サーバ -> クライアント
-- コンテンツ: 完成済み WAV バイト列を「総サイズなし」でストリーミング分割送信。
+- コンテンツ: PCM16LE を「総サイズなし」でストリーミング分割送信。
 - メッセージの流れ:
-  - START: payload 0（ストリーミング開始を示すのみ）。
-  - DATA: payload に WAV データチャンク（サイズは適宜分割）。
+  - START: payload は `<uint32 sample_rate><uint16 channels>`。
+  - DATA: payload に PCM データチャンク（サイズは適宜分割）。
   - END: payload 0。クライアントは受信完了として再生を開始する。
 - クライアントは START でバッファを初期化し、DATA を順次 append、END で再生。seq で欠損検知は可能（TCP 前提なら警告のみで継続も可）。
+
+### Downlink: kind = StateCmd (3)
+
+- 方向: サーバ -> クライアント
+- メッセージ種別: `DATA` のみ使用
+- payload: 1 byte の target state id
+  - `0=Idle`
+  - `1=Listening`
+  - `2=Thinking`
+  - `3=Speaking`
+- 現行運用: uplink の `END` 受信完了直後に `Thinking` を送信。
 
 ### kind の拡張例
 
 - AudioPcm (1): 現行の PCM16LE アップリンク
 - AudioWav (2): WAV ダウンリンク
-- 予約: 3 以降を将来のコーデック / 制御用に確保
+- StateCmd (3): 状態遷移指示
+- 予約: 4 以降を将来のコーデック / 制御用に確保
 
 ### 簡易バイト例（AudioPcm / DATA）
 
