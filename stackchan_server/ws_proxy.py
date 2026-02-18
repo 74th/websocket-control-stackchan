@@ -44,6 +44,11 @@ SAMPLE_WIDTH = 2  # bytes
 DOWN_WAV_CHUNK = 4096  # bytes per WebSocket frame for synthesized audio (raw PCM)
 DOWN_SEGMENT_MILLIS = 2000  # duration of a single START-DATA-END segment in milliseconds
 DOWN_SEGMENT_STAGGER_MILLIS = DOWN_SEGMENT_MILLIS // 2  # half interval for the second segment start
+LISTEN_AUDIO_TIMEOUT_SECONDS = 10.0
+
+
+class TimeoutError(Exception):
+    pass
 
 def create_voicevox_client() -> VVClient:
     return VVClient(base_uri="http://localhost:50021")
@@ -81,6 +86,7 @@ class WsProxy:
         self._pcm_buffer = bytearray()
         self._streaming = False
         self._listening = False
+        self._pcm_data_counter = 0
         self._message_ready = asyncio.Event()
         self._transcript: Optional[str] = None
         self._wakeword_event = asyncio.Event()
@@ -140,7 +146,22 @@ class WsProxy:
 
     async def listen(self) -> str:
         await self.send_state_command(STATE_LISTENING)
-        return await self.get_message_async()
+        loop = asyncio.get_running_loop()
+        last_counter = self._pcm_data_counter
+        last_data_time = loop.time()
+        while True:
+            if self._message_ready.is_set():
+                return self.get_message()
+            if self._closed:
+                raise WebSocketDisconnect()
+            if self._pcm_data_counter != last_counter:
+                last_counter = self._pcm_data_counter
+                last_data_time = loop.time()
+            if (loop.time() - last_data_time) >= LISTEN_AUDIO_TIMEOUT_SECONDS:
+                if not self._closed:
+                    await self.send_state_command(STATE_IDLE)
+                raise TimeoutError("Timed out after audio data inactivity from firmware")
+            await asyncio.sleep(0.05)
 
     async def speak(self, text: str) -> None:
         start_counter = self._speak_finished_counter
@@ -331,6 +352,8 @@ class WsProxy:
             asyncio.create_task(self.ws.close(code=1003, reason="invalid pcm chunk length"))
             return False
         self._pcm_buffer.extend(payload)
+        if payload_bytes > 0:
+            self._pcm_data_counter += 1
         return True
 
     async def _handle_end(self, payload_bytes: int, payload: bytes) -> None:
@@ -547,6 +570,8 @@ __all__ = [
     "DOWN_WAV_CHUNK",
     "DOWN_SEGMENT_MILLIS",
     "DOWN_SEGMENT_STAGGER_MILLIS",
+    "LISTEN_AUDIO_TIMEOUT_SECONDS",
+    "TimeoutError",
     "create_voicevox_client",
     "mulaw_to_pcm16",
     "logger",
