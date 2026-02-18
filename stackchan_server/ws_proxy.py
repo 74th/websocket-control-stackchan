@@ -236,16 +236,16 @@ class WsProxy:
 
                 if kind == _WsKind.PCM:
                     if msg_type == _WsMsgType.START:
-                        self._handle_start()
+                        self._handle_listening_start()
                         continue
 
                     if msg_type == _WsMsgType.DATA:
-                        if not self._handle_data(payload_bytes, payload):
+                        if not self._handle_listening_data(payload_bytes, payload):
                             break
                         continue
 
                     if msg_type == _WsMsgType.END:
-                        await self._handle_end(payload_bytes, payload)
+                        await self._handle_listening_end(payload_bytes, payload)
                         continue
 
                     await self.ws.close(code=1003, reason="unknown PCM msg type")
@@ -271,13 +271,13 @@ class WsProxy:
             self._closed = True
             self._speaking = False
 
-    def _handle_start(self) -> None:
+    def _handle_listening_start(self) -> None:
         logger.info("Received START")
         self._pcm_buffer = bytearray()
         self._streaming = True
         self._message_error = None
 
-    def _handle_data(self, payload_bytes: int, payload: bytes) -> bool:
+    def _handle_listening_data(self, payload_bytes: int, payload: bytes) -> bool:
         logger.info("Received DATA payload_bytes=%d", payload_bytes)
         if not self._streaming:
             asyncio.create_task(self.ws.close(code=1003, reason="data received before start"))
@@ -290,7 +290,7 @@ class WsProxy:
             self._pcm_data_counter += 1
         return True
 
-    async def _handle_end(self, payload_bytes: int, payload: bytes) -> None:
+    async def _handle_listening_end(self, payload_bytes: int, payload: bytes) -> None:
         logger.info("Received END payload_bytes=%d", payload_bytes)
         if not self._streaming:
             await self.ws.close(code=1003, reason="end received before start")
