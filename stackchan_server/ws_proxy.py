@@ -24,9 +24,15 @@ WS_HEADER_FMT = "<BBBHH"  # kind, msg_type, reserved, seq, payload_bytes
 WS_HEADER_SIZE = struct.calcsize(WS_HEADER_FMT)
 WS_KIND_PCM = 1
 WS_KIND_WAV = 2
+WS_KIND_STATE_CMD = 3
 WS_MSG_START = 1
 WS_MSG_DATA = 2
 WS_MSG_END = 3
+
+STATE_IDLE = 0
+STATE_LISTENING = 1
+STATE_THINKING = 2
+STATE_SPEAKING = 3
 
 SAMPLE_RATE_HZ = 16000
 CHANNELS = 1
@@ -250,6 +256,9 @@ class WsProxy:
             await self.ws.close(code=1003, reason="invalid accumulated pcm length")
             return
 
+        # Uplink audio has been fully received: tell firmware to enter Thinking state.
+        await self._send_state_command(STATE_THINKING)
+
         frames = len(self._pcm_buffer) // (SAMPLE_WIDTH * CHANNELS)
         duration_seconds = frames / float(SAMPLE_RATE_HZ)
 
@@ -275,6 +284,19 @@ class WsProxy:
 
         self._transcript = voice_text
         self._message_ready.set()
+
+    async def _send_state_command(self, state_id: int) -> None:
+        payload = struct.pack("<B", state_id)
+        hdr = struct.pack(
+            WS_HEADER_FMT,
+            WS_KIND_STATE_CMD,
+            WS_MSG_DATA,
+            0,
+            self._down_seq,
+            len(payload),
+        )
+        await self.ws.send_bytes(hdr + payload)
+        self._down_seq += 1
 
     def _save_wav(self, pcm_bytes: bytes) -> tuple[Path, str]:
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
@@ -399,9 +421,14 @@ __all__ = [
     "WS_HEADER_SIZE",
     "WS_KIND_PCM",
     "WS_KIND_WAV",
+    "WS_KIND_STATE_CMD",
     "WS_MSG_START",
     "WS_MSG_DATA",
     "WS_MSG_END",
+    "STATE_IDLE",
+    "STATE_LISTENING",
+    "STATE_THINKING",
+    "STATE_SPEAKING",
     "SAMPLE_RATE_HZ",
     "CHANNELS",
     "SAMPLE_WIDTH",

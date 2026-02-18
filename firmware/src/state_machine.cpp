@@ -11,6 +11,8 @@ const char *stateToString(StateMachine::State s)
 		return "Idle";
 	case StateMachine::Listening:
 		return "Listening";
+	case StateMachine::Thinking:
+		return "Thinking";
 	case StateMachine::Speaking:
 		return "Speaking";
 	default:
@@ -58,6 +60,11 @@ bool StateMachine::isListening() const
 bool StateMachine::isSpeaking() const
 {
 	return state_ == Speaking;
+}
+
+bool StateMachine::isThinking() const
+{
+	return state_ == Thinking;
 }
 
 void StateMachine::addStateEntryEvent(State state, Callback cb)

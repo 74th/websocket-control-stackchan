@@ -12,7 +12,8 @@ public:
   {
     Idle = 0,
     Listening = 1,
-    Speaking = 2,
+    Thinking = 2,
+    Speaking = 3,
   };
 
   StateMachine() = default;
@@ -21,6 +22,7 @@ public:
   State getState() const;
   bool isIdle() const;
   bool isListening() const;
+  bool isThinking() const;
   bool isSpeaking() const;
 
   using Callback = std::function<void(State prev, State next)>;
@@ -29,6 +31,6 @@ public:
 
 private:
   State state_ = Idle;
-  std::array<std::vector<Callback>, 3> entry_events_{};
-  std::array<std::vector<Callback>, 3> exit_events_{};
+  std::array<std::vector<Callback>, 4> entry_events_{};
+  std::array<std::vector<Callback>, 4> exit_events_{};
 };

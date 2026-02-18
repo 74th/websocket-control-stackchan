@@ -33,6 +33,37 @@ static WakeUpWord wakeUpWord(stateMachine, SAMPLE_RATE);
 static Display display(stateMachine);
 
 // Protocol types are defined in include/protocols.hpp
+namespace
+{
+bool applyRemoteStateCommand(const uint8_t *body, size_t bodyLen)
+{
+  if (body == nullptr || bodyLen < 1)
+  {
+    log_w("StateCmd payload too short: %u", static_cast<unsigned>(bodyLen));
+    return false;
+  }
+
+  RemoteState target = static_cast<RemoteState>(body[0]);
+  switch (target)
+  {
+  case RemoteState::Idle:
+    stateMachine.setState(StateMachine::Idle);
+    return true;
+  case RemoteState::Listening:
+    stateMachine.setState(StateMachine::Listening);
+    return true;
+  case RemoteState::Thinking:
+    stateMachine.setState(StateMachine::Thinking);
+    return true;
+  case RemoteState::Speaking:
+    stateMachine.setState(StateMachine::Speaking);
+    return true;
+  default:
+    log_w("Unknown remote state: %u", static_cast<unsigned>(body[0]));
+    return false;
+  }
+}
+} // namespace
 
 void connectWiFi()
 {
@@ -85,6 +116,16 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
     {
     case MessageKind::AudioWav:
       speaking.handleWavMessage(rx, body, rx_payload_len);
+      break;
+    case MessageKind::StateCmd:
+      if (static_cast<MessageType>(rx.messageType) == MessageType::DATA)
+      {
+        applyRemoteStateCommand(body, rx_payload_len);
+      }
+      else
+      {
+        log_w("StateCmd unsupported msgType=%u", static_cast<unsigned>(rx.messageType));
+      }
       break;
     default:
       // M5.Display.printf("WS bin kind=%u len=%d\n", (unsigned)rx.kind, (int)length);
@@ -161,6 +202,9 @@ void loop()
     break;
   case StateMachine::Listening:
     listening.loop();
+    break;
+  case StateMachine::Thinking:
+    // Wait for server side command / audio stream.
     break;
   case StateMachine::Speaking:
     speaking.loop();

@@ -5,13 +5,13 @@
 ## 全体像
 - 音声経路（上り）: CoreS3 マイク → `AudioPcm` で PCM16LE ストリーミング → サーバー受信 → WAV 保存 → Google Cloud Speech-to-Text。
 - 音声経路（下り）: サーバー側で VOICEVOX 合成 → `AudioWav` で PCM 分割送信 → CoreS3 スピーカー再生。
-- 制御: CoreS3 は `StateMachine` で `Idle` / `Listening` / `Speaking` を遷移。
+- 制御: CoreS3 は `StateMachine` で `Idle` / `Listening` / `Thinking` / `Speaking` を遷移。
 - トリガ: `Idle` 中に WakeWord 検出で `Listening` に遷移。`Listening` は無音 3 秒で自動終了。
 
 ## WebSocket プロトコル（現行）
 - 共通ヘッダ: `WsHeader`（`firmware/include/protocols.hpp`）
 - 構造（packed, little-endian）: `<B B B H H`
-  - `kind` (`uint8`): 1=`AudioPcm`, 2=`AudioWav`
+  - `kind` (`uint8`): 1=`AudioPcm`, 2=`AudioWav`, 3=`StateCmd`
   - `messageType` (`uint8`): 1=`START`, 2=`DATA`, 3=`END`
   - `reserved` (`uint8`): 0
   - `seq` (`uint16`): 送信側でインクリメント
@@ -30,6 +30,11 @@
   - `END`: payload なし
 - サーバーは合成 PCM を約 2 秒単位でセグメント化し、2 本目を 1 秒後に先行開始して連続再生しやすくしている。
 
+### Downlink（Server -> CoreS3, kind=3 StateCmd）
+- `messageType=DATA` 固定、payload は 1 byte の target state id。
+- state id: `0=Idle`, `1=Listening`, `2=Thinking`, `3=Speaking`。
+- 現在は uplink 音声の `END` 受信直後にサーバーが `Thinking` 指示を送る。
+
 ## CoreS3 側（`firmware/`）
 - エントリポイント: `firmware/src/main.cpp`
   - Wi-Fi 接続後、`/ws/stackchan` に接続。
@@ -42,11 +47,14 @@
   - `START/DATA/END` を送信。
   - 無音閾値（平均絶対値 200 以下）が 3 秒続くと自動停止して `Idle` へ戻る。
   - 送信失敗時も `Idle` へフォールバック。
+- `Thinking`
+  - サーバーからの `StateCmd` を受けて遷移する待機状態。
+  - 自動遷移はせず、`AudioWav START` または次の状態指示で遷移。
 - `Speaking`（`firmware/src/speaking.cpp`）
   - `AudioWav` の `START` でメタ情報取得、`DATA` 蓄積、`END` で `M5.Speaker.playRaw` 再生。
   - 再生完了後 `Idle` に戻る。
 - `Display`（`firmware/src/display.cpp`）
-  - 状態色のみ表示: `Idle=黒`, `Listening=青`, `Speaking=緑`。
+  - 状態色のみ表示: `Idle=黒`, `Listening=青`, `Thinking=オレンジ`, `Speaking=緑`。
 
 ## サーバー側（`stackchan_server/`）
 - FastAPI 本体: `stackchan_server/app.py`

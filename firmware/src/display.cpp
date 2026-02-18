@@ -38,6 +38,8 @@ uint16_t Display::colorForState(StateMachine::State state)
     return TFT_BLACK;
   case StateMachine::Listening:
     return TFT_BLUE;
+  case StateMachine::Thinking:
+    return TFT_ORANGE;
   case StateMachine::Speaking:
     return TFT_GREEN;
   default:
