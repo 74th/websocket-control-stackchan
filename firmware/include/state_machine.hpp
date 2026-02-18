@@ -1,6 +1,9 @@
 #pragma once
 
+#include <array>
+#include <functional>
 #include <stdint.h>
+#include <vector>
 
 class StateMachine
 {
@@ -8,16 +11,24 @@ public:
   enum State : uint8_t
   {
     Idle = 0,
-    Streaming = 1,
+    Listening = 1,
+    Speaking = 2,
   };
 
   StateMachine() = default;
 
-  void setState(State s) { state_ = s; }
-  State getState() const { return state_; }
-  bool isIdle() const { return state_ == Idle; }
-  bool isStreaming() const { return state_ == Streaming; }
+  void setState(State s);
+  State getState() const;
+  bool isIdle() const;
+  bool isListening() const;
+  bool isSpeaking() const;
+
+  using Callback = std::function<void(State prev, State next)>;
+  void addStateEntryEvent(State state, Callback cb);
+  void addStateExitEvent(State state, Callback cb);
 
 private:
   State state_ = Idle;
+  std::array<std::vector<Callback>, 3> entry_events_{};
+  std::array<std::vector<Callback>, 3> exit_events_{};
 };

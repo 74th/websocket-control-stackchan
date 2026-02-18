@@ -1,7 +1,7 @@
-#include "speaker.hpp"
+#include "speaking.hpp"
 #include <cstring>
 
-void Speaker::reset()
+void Speaking::reset()
 {
   buffer_[0].clear();
   buffer_[1].clear();
@@ -15,12 +15,23 @@ void Speaker::reset()
   channels_ = 1;
 }
 
-void Speaker::init()
+void Speaking::init()
 {
   reset();
 }
 
-void Speaker::handleWavMessage(const WsHeader &hdr, const uint8_t *body, size_t bodyLen)
+void Speaking::begin()
+{
+  // 念のためマイクを停止し、再生に集中させる
+  M5.Mic.end();
+}
+
+void Speaking::end()
+{
+  // Idle 側でマイクを再開するため、ここでは何もしない
+}
+
+void Speaking::handleWavMessage(const WsHeader &hdr, const uint8_t *body, size_t bodyLen)
 {
   auto msgType = static_cast<MessageType>(hdr.messageType);
 
@@ -32,6 +43,7 @@ void Speaker::handleWavMessage(const WsHeader &hdr, const uint8_t *body, size_t 
     playing_ = false;
     streaming_ = true;
     next_seq_ = hdr.seq + 1;
+    state_.setState(StateMachine::Speaking);
 
     // START payload (optional): <uint32 sample_rate><uint16 channels>
     if (body && bodyLen >= 6)
@@ -111,7 +123,7 @@ void Speaker::handleWavMessage(const WsHeader &hdr, const uint8_t *body, size_t 
   }
 }
 
-void Speaker::loop()
+void Speaking::loop()
 {
   if (playing_ && !M5.Speaker.isPlaying())
   {
@@ -119,15 +131,10 @@ void Speaker::loop()
     M5.Speaker.stop();
     M5.Speaker.end();
     delay(10);
+    state_.setState(StateMachine::Idle);
     reset();
     playing_ = false;
     streaming_ = false;
     M5.Display.println("TTS done.");
-
-    if (mic_was_enabled_ && !M5.Mic.isEnabled())
-    {
-      M5.Mic.begin();
-      log_i("Mic restarted after TTS playback");
-    }
   }
 }

@@ -6,13 +6,17 @@
 #include "protocols.hpp"
 #include "state_machine.hpp"
 
-class Speaker
+class Speaking
 {
 public:
-  explicit Speaker(StateMachine &sm) : state_(sm) {}
+  explicit Speaking(StateMachine &sm) : state_(sm) {}
 
   // Initialize internal buffers/state (call once from setup)
   void init();
+
+  // Speaking ステートに入る/出る際の処理
+  void begin();
+  void end();
 
   // Process one WS audio message of kind AudioWav
   void handleWavMessage(const WsHeader &hdr, const uint8_t *body, size_t bodyLen);

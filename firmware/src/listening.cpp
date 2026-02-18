@@ -1,17 +1,24 @@
-#include "mic.hpp"
+#include "listening.hpp"
 #include <algorithm>
 #include <cstring>
 #include <vector>
+#include <cstdlib>
 
-Mic::Mic(WebSocketsClient &ws, StateMachine &sm, int sampleRate)
+Listening::Listening(WebSocketsClient &ws, StateMachine &sm, int sampleRate)
     : ws_(ws), state_(sm), sample_rate_(sampleRate),
       chunk_samples_(static_cast<size_t>(sampleRate) / 2),
       ring_capacity_samples_(static_cast<size_t>(sampleRate) * 2)
 {
 }
 
-void Mic::init()
+void Listening::init()
 {
+  if (ring_buffer_)
+  {
+    heap_caps_free(ring_buffer_);
+    ring_buffer_ = nullptr;
+  }
+
   if (ring_buffer_)
   {
     heap_caps_free(ring_buffer_);
@@ -27,27 +34,40 @@ void Mic::init()
   streaming_ = false;
 }
 
-bool Mic::startStreaming()
+void Listening::begin()
+{
+  M5.Mic.begin();
+  startStreaming();
+}
+
+void Listening::end()
+{
+  stopStreaming();
+  M5.Mic.end();
+}
+
+bool Listening::startStreaming()
 {
   ring_write_ = ring_read_ = ring_available_ = 0;
   seq_counter_ = 0;
-  M5.Mic.begin();
+  last_level_ = 0;
+  silence_since_ms_ = 0;
   streaming_ = true;
   return sendPacket(MessageType::START, nullptr, 0);
 }
 
-bool Mic::stopStreaming()
+bool Listening::stopStreaming()
 {
-  bool ok = sendPacket(MessageType::END, nullptr, 0);
-  M5.Mic.end();
-  return ok;
+  if (!streaming_)
   {
     return true;
   }
-  // flush remaining samples
+
+  // flush remaining samples before END
+  bool ok = true;
   if (ring_available_ > 0)
   {
-    const size_t tail_capacity = chunk_samples_; // 1チャンク分を丸ごと持てるサイズ
+    const size_t tail_capacity = chunk_samples_;
     std::vector<int16_t> tail_buf(tail_capacity);
     size_t to_send = ring_available_;
     while (to_send > 0)
@@ -56,21 +76,23 @@ bool Mic::stopStreaming()
       size_t sent = ringPop(tail_buf.data(), chunk);
       if (!sendPacket(MessageType::DATA, tail_buf.data(), sent))
       {
-        streaming_ = false;
-        return false;
+        ok = false;
+        break;
       }
       to_send -= sent;
     }
   }
+
   streaming_ = false;
-  return sendPacket(MessageType::END, nullptr, 0);
+  ok = sendPacket(MessageType::END, nullptr, 0) && ok;
+  return ok;
 }
 
-bool Mic::loop()
+void Listening::loop()
 {
   if (!streaming_)
   {
-    return true;
+    return;
   }
 
   static int16_t mic_buf[256];
@@ -79,6 +101,7 @@ bool Mic::loop()
     if (M5.Mic.record(mic_buf, mic_read_samples_, sample_rate_))
     {
       ringPush(mic_buf, mic_read_samples_);
+      updateLevelStats(mic_buf, mic_read_samples_);
     }
   }
 
@@ -94,14 +117,79 @@ bool Mic::loop()
     if (!sendPacket(MessageType::DATA, send_buf.data(), got))
     {
       streaming_ = false;
-      return false;
+      M5.Display.println("WS send failed (data)");
+      log_i("WS send failed (data)");
+      state_.setState(StateMachine::Idle);
+      return;
     }
   }
 
-  return true;
+  // 無音が3秒続いたら終了
+  if (shouldStopForSilence())
+  {
+    log_i("Auto stop: silence detected (avg=%ld)", static_cast<long>(last_level_));
+    M5.Display.fillScreen(TFT_BLACK);
+    M5.Display.setCursor(10, 10);
+    M5.Display.setTextSize(3);
+    M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
+    if (!stopStreaming())
+    {
+      M5.Display.println("WS send failed (tail/end)");
+      log_i("WS send failed (tail/end)");
+    }
+    state_.setState(StateMachine::Idle);
+    M5.Display.println("Stopped (silence)");
+
+    // 終了直後のTTS再生でMic/Speakerが競合しないよう、少し待つ
+    delay(20);
+  }
 }
 
-bool Mic::sendPacket(MessageType type, const int16_t *samples, size_t sampleCount)
+void Listening::updateLevelStats(const int16_t *samples, size_t sampleCount)
+{
+  if (sampleCount == 0)
+  {
+    return;
+  }
+
+  int64_t sum = 0;
+  for (size_t i = 0; i < sampleCount; ++i)
+  {
+    sum += std::abs(samples[i]);
+  }
+  last_level_ = static_cast<int32_t>(sum / static_cast<int64_t>(sampleCount));
+
+  uint32_t now = millis();
+  if (last_level_ <= kSilenceLevelThreshold)
+  {
+    if (silence_since_ms_ == 0)
+    {
+      silence_since_ms_ = now;
+    }
+  }
+  else
+  {
+    silence_since_ms_ = 0;
+  }
+}
+
+bool Listening::shouldStopForSilence() const
+{
+  if (silence_since_ms_ == 0)
+  {
+    return false;
+  }
+
+  if (last_level_ > kSilenceLevelThreshold)
+  {
+    return false;
+  }
+
+  uint32_t elapsed = millis() - silence_since_ms_;
+  return elapsed >= kSilenceDurationMs;
+}
+
+bool Listening::sendPacket(MessageType type, const int16_t *samples, size_t sampleCount)
 {
   if ((WiFi.status() != WL_CONNECTED) || !ws_.isConnected())
   {
@@ -127,7 +215,7 @@ bool Mic::sendPacket(MessageType type, const int16_t *samples, size_t sampleCoun
   return true;
 }
 
-void Mic::ringPush(const int16_t *src, size_t samples)
+void Listening::ringPush(const int16_t *src, size_t samples)
 {
   if (samples == 0)
   {
@@ -158,7 +246,7 @@ void Mic::ringPush(const int16_t *src, size_t samples)
   ring_available_ += samples;
 }
 
-size_t Mic::ringPop(int16_t *dst, size_t samples)
+size_t Listening::ringPop(int16_t *dst, size_t samples)
 {
   size_t to_read = std::min(samples, ring_available_);
   if (to_read == 0)

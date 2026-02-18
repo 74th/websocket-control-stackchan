@@ -10,8 +10,9 @@
 #include "config.h"
 #include "../include/protocols.hpp"
 #include "../include/state_machine.hpp"
-#include "../include/speaker.hpp"
-#include "../include/mic.hpp"
+#include "../include/speaking.hpp"
+#include "../include/listening.hpp"
+#include "../include/wake_up_word.hpp"
 
 //////////////////// 設定 ////////////////////
 const char *WIFI_SSID = WIFI_SSID_H;
@@ -25,8 +26,9 @@ const int SAMPLE_RATE = 16000;           // 16kHz モノラル
 StateMachine stateMachine;
 
 static WebSocketsClient wsClient;
-static Speaker speaker(stateMachine);
-static Mic mic(wsClient, stateMachine, SAMPLE_RATE);
+static Speaking speaking(stateMachine);
+static Listening listening(wsClient, stateMachine, SAMPLE_RATE);
+static WakeUpWord wakeUpWord(stateMachine, SAMPLE_RATE);
 
 // Protocol types are defined in include/protocols.hpp
 
@@ -80,7 +82,7 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
     switch (static_cast<MessageKind>(rx.kind))
     {
     case MessageKind::AudioWav:
-      speaker.handleWavMessage(rx, body, rx_payload_len);
+      speaking.handleWavMessage(rx, body, rx_payload_len);
       break;
     default:
       M5.Display.printf("WS bin kind=%u len=%d\n", (unsigned)rx.kind, (int)length);
@@ -98,7 +100,14 @@ void setup()
 {
   auto cfg = M5.config();
   M5.begin(cfg);
-  mic.init();
+  auto mic_cfg = M5.Mic.config();
+  mic_cfg.sample_rate = SAMPLE_RATE;
+  mic_cfg.stereo = false;
+  M5.Mic.config(mic_cfg);
+
+  listening.init();
+  speaking.init();
+  wakeUpWord.init();
 
   // M5.Display.setTextSize(2);
   M5.Display.println("CoreS3 SE - AI Home Agent (WS)");
@@ -106,14 +115,38 @@ void setup()
   connectWiFi();
   M5.Display.printf("WiFi: %s\n", WiFi.localIP().toString().c_str());
 
-  // Mic/Speaker setup
+  // Mic/Speaking setup
   M5.Speaker.setVolume(200); // 0-255
-  speaker.init();
 
   wsClient.begin(SERVER_HOST, SERVER_PORT, SERVER_PATH);
   wsClient.onEvent(handleWsEvent);
   wsClient.setReconnectInterval(2000);
   wsClient.enableHeartbeat(15000, 3000, 2);
+
+  // State entry/exit hooks
+  stateMachine.addStateEntryEvent(StateMachine::Idle, [](StateMachine::State, StateMachine::State) {
+    wakeUpWord.begin();
+  });
+  stateMachine.addStateExitEvent(StateMachine::Idle, [](StateMachine::State, StateMachine::State) {
+    wakeUpWord.end();
+  });
+
+  stateMachine.addStateEntryEvent(StateMachine::Listening, [](StateMachine::State, StateMachine::State) {
+    listening.begin();
+  });
+  stateMachine.addStateExitEvent(StateMachine::Listening, [](StateMachine::State, StateMachine::State) {
+    listening.end();
+  });
+
+  stateMachine.addStateEntryEvent(StateMachine::Speaking, [](StateMachine::State, StateMachine::State) {
+    speaking.begin();
+  });
+  stateMachine.addStateExitEvent(StateMachine::Speaking, [](StateMachine::State, StateMachine::State) {
+    speaking.end();
+  });
+
+  // initial state setup (Idle)
+  wakeUpWord.begin();
 }
 
 void loop()
@@ -121,55 +154,19 @@ void loop()
   M5.update();
   wsClient.loop();
 
-  if (stateMachine.isIdle())
+  StateMachine::State current = stateMachine.getState();
+  switch (current)
   {
-    M5.Display.setCursor(0, 40);
-    M5.Display.println("Hold Btn A: start / Release: stop");
-
-    if (M5.BtnA.wasPressed())
-    {
-      log_i("pressing Btn A: start streaming");
-      // TTS 受信・再生状態を初期化
-      speaker.reset();
-
-      if (mic.startStreaming())
-      {
-        M5.Display.println("Streaming...");
-        stateMachine.setState(StateMachine::Streaming);
-      }
-      else
-      {
-        M5.Display.println("WS not connected (start)");
-      }
-    }
+  case StateMachine::Idle:
+    wakeUpWord.loop();
+    break;
+  case StateMachine::Listening:
+    listening.loop();
+    break;
+  case StateMachine::Speaking:
+    speaking.loop();
+    break;
+  default:
+    break;
   }
-  else if (stateMachine.isStreaming())
-  {
-    if (!mic.loop())
-    {
-      M5.Display.println("WS send failed (data)");
-      log_i("WS send failed (data)");
-      stateMachine.setState(StateMachine::Idle);
-      return;
-    }
-
-    // ボタンを離したら残りを送って終了メッセージ
-    if (M5.BtnA.wasReleased())
-    {
-      log_i("Btn A released: stop streaming");
-      if (!mic.stopStreaming())
-      {
-        M5.Display.println("WS send failed (tail/end)");
-        log_i("WS send failed (tail/end)");
-      }
-      stateMachine.setState(StateMachine::Idle);
-      M5.Display.println("Stopped. Hold Btn A to start.");
-
-      // 終了直後のTTS再生でMic/Speakerが競合しないよう、少し待つ
-      delay(20);
-    }
-  }
-
-  // ---- Downlink TTS playback (handled by Speaker) ----
-  speaker.loop();
 }
