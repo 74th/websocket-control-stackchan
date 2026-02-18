@@ -50,6 +50,10 @@ LISTEN_AUDIO_TIMEOUT_SECONDS = 10.0
 class TimeoutError(Exception):
     pass
 
+
+class EmptyTranscriptError(Exception):
+    pass
+
 def create_voicevox_client() -> VVClient:
     return VVClient(base_uri="http://localhost:50021")
 
@@ -88,6 +92,7 @@ class WsProxy:
         self._listening = False
         self._pcm_data_counter = 0
         self._message_ready = asyncio.Event()
+        self._message_error: Optional[Exception] = None
         self._transcript: Optional[str] = None
         self._wakeword_event = asyncio.Event()
 
@@ -129,6 +134,10 @@ class WsProxy:
 
     async def get_message_async(self) -> str:
         while True:
+            if self._message_error is not None:
+                err = self._message_error
+                self._message_error = None
+                raise err
             if self._message_ready.is_set():
                 return self.get_message()
             if self._closed:
@@ -150,6 +159,10 @@ class WsProxy:
         last_counter = self._pcm_data_counter
         last_data_time = loop.time()
         while True:
+            if self._message_error is not None:
+                err = self._message_error
+                self._message_error = None
+                raise err
             if self._message_ready.is_set():
                 return self.get_message()
             if self._closed:
@@ -342,6 +355,7 @@ class WsProxy:
         self._pcm_buffer = bytearray()
         self._streaming = True
         self._listening = True
+        self._message_error = None
 
     def _handle_data(self, payload_bytes: int, payload: bytes) -> bool:
         logger.info("Received DATA payload_bytes=%d", payload_bytes)
@@ -394,6 +408,10 @@ class WsProxy:
         self._streaming = False
         self._listening = False
         self._pcm_buffer = bytearray()
+
+        if transcript.strip() == "":
+            self._message_error = EmptyTranscriptError("Speech recognition result is empty")
+            return
 
         self._transcript = transcript
         self._message_ready.set()
@@ -572,6 +590,7 @@ __all__ = [
     "DOWN_SEGMENT_STAGGER_MILLIS",
     "LISTEN_AUDIO_TIMEOUT_SECONDS",
     "TimeoutError",
+    "EmptyTranscriptError",
     "create_voicevox_client",
     "mulaw_to_pcm16",
     "logger",
