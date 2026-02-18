@@ -6,7 +6,7 @@ from typing import Awaitable, Callable, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from google.cloud import speech
 
-from .ws_proxy import WsProxy
+from .ws_proxy import STATE_IDLE, WsProxy
 
 
 class StackChanApp:
@@ -14,7 +14,7 @@ class StackChanApp:
         self.speech_client = speech.SpeechClient()
         self.fastapi = FastAPI(title="StackChan WebSocket Server")
         self._setup_fn: Optional[Callable[[WsProxy], Awaitable[None]]] = None
-        self._loop_fn: Optional[Callable[[WsProxy], Awaitable[None]]] = None
+        self._talk_session_fn: Optional[Callable[[WsProxy], Awaitable[None]]] = None
 
         @self.fastapi.get("/health")
         async def _health() -> dict[str, str]:
@@ -28,8 +28,8 @@ class StackChanApp:
         self._setup_fn = fn
         return fn
 
-    def loop(self, fn: Callable[["WsProxy"], Awaitable[None]]):
-        self._loop_fn = fn
+    def talk_session(self, fn: Callable[["WsProxy"], Awaitable[None]]):
+        self._talk_session_fn = fn
         return fn
 
     async def _handle_ws(self, websocket: WebSocket) -> None:
@@ -41,10 +41,13 @@ class StackChanApp:
                 await self._setup_fn(proxy)
 
             while not proxy.closed:
-                if self._loop_fn:
-                    await self._loop_fn(proxy)
-                else:
+                if not self._talk_session_fn:
                     await asyncio.sleep(0.05)
+                else:
+                    await proxy.wait_for_talk_session()
+                    await self._talk_session_fn(proxy)
+                    if not proxy.closed:
+                        await proxy.send_state_command(STATE_IDLE)
 
                 if proxy.receive_task and proxy.receive_task.done():
                     break

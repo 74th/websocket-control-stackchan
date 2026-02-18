@@ -4,8 +4,6 @@ from logging import StreamHandler, getLogger
 
 from stackchan_server.app import StackChanApp
 from stackchan_server.ws_proxy import WsProxy
-from google import genai
-from google.genai.types import HttpOptions, ModelContent, Part, UserContent
 
 
 logger = getLogger(__name__)
@@ -18,14 +16,21 @@ app = StackChanApp()
 
 @app.setup
 async def setup(proxy: WsProxy):
-	logger.info("WebSocket connected")
+    logger.info("WebSocket connected")
 
 
-@app.loop
-async def loop(proxy: WsProxy):
-	text = await proxy.get_message_async()
-	logger.info("Heard: %s", text)
-	await proxy.start_talking(text)
+@app.talk_session
+async def talk_session(proxy: WsProxy):
+    text = await proxy.listen()
+    logger.info("Heard: %s", text)
+    await proxy.speak(text)
+
+    while True:
+        text = await proxy.listen()
+        if not text:
+            return
+        logger.info("Heard: %s", text)
+        await proxy.speak(text)
 
 
 

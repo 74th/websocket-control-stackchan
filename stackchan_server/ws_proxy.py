@@ -25,6 +25,9 @@ WS_HEADER_SIZE = struct.calcsize(WS_HEADER_FMT)
 WS_KIND_PCM = 1
 WS_KIND_WAV = 2
 WS_KIND_STATE_CMD = 3
+WS_KIND_WAKEWORD_EVT = 4
+WS_KIND_STATE_EVT = 5
+WS_KIND_SPEAK_DONE_EVT = 6
 WS_MSG_START = 1
 WS_MSG_DATA = 2
 WS_MSG_END = 3
@@ -80,6 +83,7 @@ class WsProxy:
         self._listening = False
         self._message_ready = asyncio.Event()
         self._transcript: Optional[str] = None
+        self._wakeword_event = asyncio.Event()
 
         self._receiving_task: Optional[asyncio.Task] = None
         self._closed = False
@@ -88,6 +92,9 @@ class WsProxy:
         self._speaking = False
         self._speaking_done = asyncio.Event()
         self._speaking_done.set()
+        self._firmware_state: Optional[int] = None
+        self._firmware_state_counter = 0
+        self._speak_finished_counter = 0
 
         self._down_seq = 0
 
@@ -122,6 +129,72 @@ class WsProxy:
                 raise WebSocketDisconnect()
             await asyncio.sleep(0.05)
 
+    async def wait_for_talk_session(self) -> None:
+        while True:
+            if self._wakeword_event.is_set():
+                self._wakeword_event.clear()
+                return
+            if self._closed:
+                raise WebSocketDisconnect()
+            await asyncio.sleep(0.05)
+
+    async def listen(self) -> str:
+        await self.send_state_command(STATE_LISTENING)
+        return await self.get_message_async()
+
+    async def speak(self, text: str) -> None:
+        start_counter = self._speak_finished_counter
+        await self._start_talking_stream(text)
+        if not self._speaking:
+            return
+        await self.wait_for_speaking_finished(
+            min_counter=start_counter + 1,
+            timeout_seconds=120.0,
+        )
+        if not self._closed:
+            await self.send_state_command(STATE_IDLE)
+
+    async def wait_for_speaking_finished(
+        self,
+        *,
+        min_counter: int = 0,
+        timeout_seconds: Optional[float] = None,
+    ) -> None:
+        loop = asyncio.get_running_loop()
+        deadline = (loop.time() + timeout_seconds) if timeout_seconds else None
+        while True:
+            if self._speak_finished_counter >= min_counter:
+                return
+            if self._closed:
+                raise WebSocketDisconnect()
+            if deadline and loop.time() >= deadline:
+                raise TimeoutError("Timed out waiting for speaking finished event")
+            await asyncio.sleep(0.05)
+
+    async def wait_for_state(
+        self,
+        target_state: int,
+        *,
+        min_counter: int = 0,
+        timeout_seconds: Optional[float] = None,
+    ) -> None:
+        loop = asyncio.get_running_loop()
+        deadline = (loop.time() + timeout_seconds) if timeout_seconds else None
+        while True:
+            if (
+                self._firmware_state == target_state
+                and self._firmware_state_counter >= min_counter
+            ):
+                return
+            if self._closed:
+                raise WebSocketDisconnect()
+            if deadline and loop.time() >= deadline:
+                raise TimeoutError(f"Timed out waiting for firmware state {target_state}")
+            await asyncio.sleep(0.05)
+
+    async def send_state_command(self, state_id: int) -> None:
+        await self._send_state_command(state_id)
+
     async def start(self) -> None:
         if self._receiving_task is None:
             self._receiving_task = asyncio.create_task(self._receive_loop())
@@ -134,6 +207,9 @@ class WsProxy:
                 await self._receiving_task
 
     async def start_talking(self, text: str) -> None:
+        await self.speak(text)
+
+    async def _start_talking_stream(self, text: str) -> None:
         self._synthesizing = True
         self._speaking = True
         self._speaking_done.clear()
@@ -143,6 +219,11 @@ class WsProxy:
                 wav_bytes = await audio_query.synthesis(speaker=29)
 
             pcm_bytes, tts_sample_rate, tts_channels, tts_sample_width = self._extract_pcm(wav_bytes)
+            if len(pcm_bytes) == 0:
+                self._synthesizing = False
+                self._speaking = False
+                self._speaking_done.set()
+                return
 
             if tts_sample_width != SAMPLE_WIDTH:
                 await self.ws.send_json({"error": f"unsupported sample width {tts_sample_width}"})
@@ -164,9 +245,6 @@ class WsProxy:
             self._synthesizing = False
 
             await self._send_segments(pcm_bytes, tts_sample_rate, tts_channels, segment_bytes)
-
-            estimated_duration = len(pcm_bytes) / bytes_per_second if bytes_per_second else 0
-            asyncio.create_task(self._finish_speaking_after(estimated_duration))
         except Exception as exc:  # pragma: no cover
             self._synthesizing = False
             self._speaking = False
@@ -193,29 +271,42 @@ class WsProxy:
                 kind, msg_type, _reserved, _seq, payload_bytes = struct.unpack(
                     WS_HEADER_FMT, message[:WS_HEADER_SIZE]
                 )
-                if kind != WS_KIND_PCM:
-                    await self.ws.close(code=1003, reason="unsupported kind")
-                    break
 
                 payload = message[WS_HEADER_SIZE:]
                 if payload_bytes != len(payload):
                     await self.ws.close(code=1003, reason="payload length mismatch")
                     break
 
-                if msg_type == WS_MSG_START:
-                    self._handle_start()
+                if kind == WS_KIND_PCM:
+                    if msg_type == WS_MSG_START:
+                        self._handle_start()
+                        continue
+
+                    if msg_type == WS_MSG_DATA:
+                        if not self._handle_data(payload_bytes, payload):
+                            break
+                        continue
+
+                    if msg_type == WS_MSG_END:
+                        await self._handle_end(payload_bytes, payload)
+                        continue
+
+                    await self.ws.close(code=1003, reason="unknown PCM msg type")
+                    break
+
+                if kind == WS_KIND_WAKEWORD_EVT:
+                    self._handle_wakeword_event(msg_type, payload)
                     continue
 
-                if msg_type == WS_MSG_DATA:
-                    if not self._handle_data(payload_bytes, payload):
-                        break
+                if kind == WS_KIND_STATE_EVT:
+                    self._handle_state_event(msg_type, payload)
                     continue
 
-                if msg_type == WS_MSG_END:
-                    await self._handle_end(payload_bytes, payload)
+                if kind == WS_KIND_SPEAK_DONE_EVT:
+                    self._handle_speak_done_event(msg_type, payload)
                     continue
 
-                await self.ws.close(code=1003, reason="unknown msg type")
+                await self.ws.close(code=1003, reason="unsupported kind")
                 break
         except WebSocketDisconnect:
             pass
@@ -276,14 +367,41 @@ class WsProxy:
         )
 
         transcript = await self._transcribe_async(bytes(self._pcm_buffer))
-        voice_text = transcript or "音声を認識できませんでした。"
 
         self._streaming = False
         self._listening = False
         self._pcm_buffer = bytearray()
 
-        self._transcript = voice_text
+        self._transcript = transcript
         self._message_ready.set()
+
+    def _handle_wakeword_event(self, msg_type: int, payload: bytes) -> None:
+        if msg_type != WS_MSG_DATA:
+            return
+        if len(payload) < 1:
+            return
+        logger.info("Received wakeword event")
+        self._wakeword_event.set()
+
+    def _handle_state_event(self, msg_type: int, payload: bytes) -> None:
+        if msg_type != WS_MSG_DATA:
+            return
+        if len(payload) < 1:
+            return
+        state_id = int(payload[0])
+        self._firmware_state = state_id
+        self._firmware_state_counter += 1
+        logger.info("Received firmware state=%d", state_id)
+
+    def _handle_speak_done_event(self, msg_type: int, payload: bytes) -> None:
+        if msg_type != WS_MSG_DATA:
+            return
+        if len(payload) < 1:
+            return
+        self._speak_finished_counter += 1
+        self._speaking = False
+        self._speaking_done.set()
+        logger.info("Received speak done event")
 
     async def _send_state_command(self, state_id: int) -> None:
         payload = struct.pack("<B", state_id)
@@ -406,15 +524,6 @@ class WsProxy:
         await self.ws.send_bytes(end_hdr)
         self._down_seq += 1
 
-    async def _finish_speaking_after(self, delay_seconds: float) -> None:
-        try:
-            if delay_seconds > 0:
-                await asyncio.sleep(delay_seconds)
-        finally:
-            self._speaking = False
-            self._speaking_done.set()
-
-
 __all__ = [
     "WsProxy",
     "WS_HEADER_FMT",
@@ -422,6 +531,9 @@ __all__ = [
     "WS_KIND_PCM",
     "WS_KIND_WAV",
     "WS_KIND_STATE_CMD",
+    "WS_KIND_WAKEWORD_EVT",
+    "WS_KIND_STATE_EVT",
+    "WS_KIND_SPEAK_DONE_EVT",
     "WS_MSG_START",
     "WS_MSG_DATA",
     "WS_MSG_END",

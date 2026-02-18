@@ -6,12 +6,12 @@
 - 音声経路（上り）: CoreS3 マイク → `AudioPcm` で PCM16LE ストリーミング → サーバー受信 → WAV 保存 → Google Cloud Speech-to-Text。
 - 音声経路（下り）: サーバー側で VOICEVOX 合成 → `AudioWav` で PCM 分割送信 → CoreS3 スピーカー再生。
 - 制御: CoreS3 は `StateMachine` で `Idle` / `Listening` / `Thinking` / `Speaking` を遷移。
-- トリガ: `Idle` 中に WakeWord 検出で `Listening` に遷移。`Listening` は無音 3 秒で自動終了。
+- トリガ: `Idle` 中に WakeWord 検出をサーバーへ通知。`Listening` 遷移はサーバーからの `StateCmd` で開始。`Listening` は無音 3 秒で自動終了。
 
 ## WebSocket プロトコル（現行）
 - 共通ヘッダ: `WsHeader`（`firmware/include/protocols.hpp`）
 - 構造（packed, little-endian）: `<B B B H H`
-  - `kind` (`uint8`): 1=`AudioPcm`, 2=`AudioWav`, 3=`StateCmd`
+  - `kind` (`uint8`): 1=`AudioPcm`, 2=`AudioWav`, 3=`StateCmd`, 4=`WakeWordEvt`, 5=`StateEvt`, 6=`SpeakDoneEvt`
   - `messageType` (`uint8`): 1=`START`, 2=`DATA`, 3=`END`
   - `reserved` (`uint8`): 0
   - `seq` (`uint16`): 送信側でインクリメント
@@ -35,13 +35,26 @@
 - state id: `0=Idle`, `1=Listening`, `2=Thinking`, `3=Speaking`。
 - 現在は uplink 音声の `END` 受信直後にサーバーが `Thinking` 指示を送る。
 
+### Uplink（CoreS3 -> Server, kind=4 WakeWordEvt）
+- `messageType=DATA` 固定、payload は 1 byte（`1=detected`）。
+- `Idle` 中の WakeWord 検出通知。サーバー側の対話セッション起動トリガに使う。
+
+### Uplink（CoreS3 -> Server, kind=5 StateEvt）
+- `messageType=DATA` 固定、payload は 1 byte の current state id。
+- state id: `0=Idle`, `1=Listening`, `2=Thinking`, `3=Speaking`。
+- サーバーは状態同期に利用する。
+
+### Uplink（CoreS3 -> Server, kind=6 SpeakDoneEvt）
+- `messageType=DATA` 固定、payload は 1 byte（`1=done`）。
+- `Speaking` の再生完了通知。`Idle` とは独立して発話完了を判定できる。
+
 ## CoreS3 側（`firmware/`）
 - エントリポイント: `firmware/src/main.cpp`
   - Wi-Fi 接続後、`/ws/stackchan` に接続。
   - WS 受信で `kind=AudioWav` を `Speaking` に渡す。
 - `WakeUpWord`（`firmware/src/wake_up_word.cpp`）
   - `Idle` 中に `ESP_SR_M5` へマイク音声を feed。
-  - WakeWord 検出で `Listening` へ遷移。
+  - WakeWord 検出時は `WakeWordEvt` を送信（自動遷移しない）。
 - `Listening`（`firmware/src/listening.cpp`）
   - 2 秒リングバッファ、マイク読み取り 256 サンプル単位。
   - `START/DATA/END` を送信。
@@ -52,7 +65,7 @@
   - 自動遷移はせず、`AudioWav START` または次の状態指示で遷移。
 - `Speaking`（`firmware/src/speaking.cpp`）
   - `AudioWav` の `START` でメタ情報取得、`DATA` 蓄積、`END` で `M5.Speaker.playRaw` 再生。
-  - 再生完了後 `Idle` に戻る。
+  - 再生完了時に `SpeakDoneEvt` を送信し、その後 `Idle` に戻る。
 - `Display`（`firmware/src/display.cpp`）
   - 状態色のみ表示: `Idle=黒`, `Listening=青`, `Thinking=オレンジ`, `Speaking=緑`。
 
@@ -69,6 +82,7 @@
 ## アプリ層（`app/`）
 - `app/echo.py`: 認識結果をそのまま VOICEVOX で復唱。
 - `app/gemini.py`: 認識結果を Gemini チャットに渡し、応答文を VOICEVOX で発話。
+  - いずれも `@app.talk_session` / `proxy.listen()` / `proxy.speak()` を使用。
 
 ## 依存・周辺
 - VOICEVOX エンジン: ルート `docker-compose.yml` の `voicevox` サービス（`50021:50021`）。
@@ -79,6 +93,6 @@
 1. VOICEVOX を起動（ルートで `docker compose run --rm --service-ports voicevox` など）。
 2. サーバーを起動（例: `uv run uvicorn app.gemini:app.fastapi --host 0.0.0.0 --port 8000`）。
 3. CoreS3 が Wi-Fi/WS 接続後、`Idle` で WakeWord 待機。
-4. WakeWord 検出で録音送信開始。無音 3 秒で送信終了。
+4. WakeWord 検出をサーバーへ通知。サーバーが `Listening` を指示して録音送信開始。無音 3 秒で送信終了。
 5. サーバーが WAV 保存・文字起こしし、アプリ層の応答文を VOICEVOX 合成。
 6. 合成 PCM が `AudioWav` で返送され、CoreS3 が再生して `Idle` に戻る。

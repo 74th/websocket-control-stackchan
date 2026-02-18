@@ -16,6 +16,9 @@ enum class MessageKind : uint8_t
 	AudioPcm = 1, // uplink PCM16LE stream (client -> server)
 	AudioWav = 2, // downlink WAV bytes (server -> client)
 	StateCmd = 3, // state transition command (server -> client)
+	WakeWordEvt = 4, // wake word event (client -> server)
+	StateEvt = 5, // current state event (client -> server)
+	SpeakDoneEvt = 6, // speaking completed event (client -> server)
 };
 
 enum class MessageType : uint8_t

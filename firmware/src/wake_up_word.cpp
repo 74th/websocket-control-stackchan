@@ -1,5 +1,6 @@
 #include <M5Unified.h>
 #include <ESP_SR_M5Unified.h>
+#include <utility>
 #include "wake_up_word.hpp"
 
 namespace
@@ -76,6 +77,11 @@ void WakeUpWord::loop()
   }
 }
 
+void WakeUpWord::setWakeWordDetectedCallback(std::function<void()> cb)
+{
+  on_wake_word_detected_ = std::move(cb);
+}
+
 void WakeUpWord::onSrEventForward(sr_event_t event, int command_id, int phrase_id)
 {
   if (g_wuw)
@@ -90,8 +96,10 @@ void WakeUpWord::handleSrEvent(sr_event_t event, int command_id, int phrase_id)
   {
   case SR_EVENT_WAKEWORD:
     log_i("WakeWord Detected!");
-    log_i("WakeWord Detected: entering Listening state");
-    state_.setState(StateMachine::Listening);
+    if (on_wake_word_detected_)
+    {
+      on_wake_word_detected_();
+    }
     break;
   default:
     log_i("Unknown Event: %d", event);

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <ESP_SR_M5Unified.h>
 #include "state_machine.hpp"
 
@@ -23,12 +24,15 @@ public:
   // Idle ステート中の処理（マイク入力→SRへ供給）
   void loop();
 
+  void setWakeWordDetectedCallback(std::function<void()> cb);
+
 private:
   static void onSrEventForward(sr_event_t event, int command_id, int phrase_id);
   void handleSrEvent(sr_event_t event, int command_id, int phrase_id);
 
   StateMachine &state_;
   const int sample_rate_;
+  std::function<void()> on_wake_word_detected_;
 
   // Idle 時のログ用カウンタ
   uint32_t loop_count_ = 0;

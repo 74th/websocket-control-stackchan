@@ -8,3 +8,4 @@
 firmware/include/config.h
 recordings
 ._.DS_Store
+.pio-home
