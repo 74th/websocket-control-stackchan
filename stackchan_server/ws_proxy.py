@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import os
 import struct
 import wave
 from contextlib import suppress
@@ -32,6 +33,7 @@ _DOWN_WAV_CHUNK = 4096  # bytes per WebSocket frame for synthesized audio (raw P
 _DOWN_SEGMENT_MILLIS = 2000  # duration of a single START-DATA-END segment in milliseconds
 _DOWN_SEGMENT_STAGGER_MILLIS = _DOWN_SEGMENT_MILLIS // 2  # half interval for the second segment start
 _LISTEN_AUDIO_TIMEOUT_SECONDS = 10.0
+_DEBUG_RECORDING_ENABLED = os.getenv("DEBUG_RECODING") == "1"
 
 
 class TimeoutError(Exception):
@@ -73,7 +75,9 @@ class WsProxy:
         self.ws = websocket
         self.speech_client = speech_client
         self.recordings_dir = _RECORDINGS_DIR
-        self.recordings_dir.mkdir(parents=True, exist_ok=True)
+        self._debug_recording = _DEBUG_RECORDING_ENABLED
+        if self._debug_recording:
+            self.recordings_dir.mkdir(parents=True, exist_ok=True)
 
         self._pcm_buffer = bytearray()
         self._streaming = False
@@ -306,18 +310,20 @@ class WsProxy:
         frames = len(self._pcm_buffer) // (_SAMPLE_WIDTH * _CHANNELS)
         duration_seconds = frames / float(_SAMPLE_RATE_HZ)
 
-        filepath, filename = self._save_wav(bytes(self._pcm_buffer))
+        ws_meta = {
+            "sample_rate": _SAMPLE_RATE_HZ,
+            "frames": frames,
+            "channels": _CHANNELS,
+            "duration_seconds": round(duration_seconds, 3),
+        }
+        if self._debug_recording:
+            _filepath, filename = self._save_wav(bytes(self._pcm_buffer))
+            ws_meta["text"] = f"Saved as {filename}"
+            ws_meta["path"] = f"recordings/{filename}"
+        else:
+            ws_meta["text"] = "Recording skipped (DEBUG_RECODING!=1)"
 
-        await self.ws.send_json(
-            {
-                "text": f"Saved as {filename}",
-                "sample_rate": _SAMPLE_RATE_HZ,
-                "frames": frames,
-                "channels": _CHANNELS,
-                "duration_seconds": round(duration_seconds, 3),
-                "path": f"recordings/{filename}",
-            }
-        )
+        await self.ws.send_json(ws_meta)
 
         transcript = await self._transcribe_async(bytes(self._pcm_buffer))
 
