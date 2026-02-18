@@ -14,12 +14,11 @@ void Display::init()
 void Display::loop()
 {
   StateMachine::State current = state_.getState();
-  if (has_prev_state_ && current == prev_state_)
+  if (!has_prev_state_ || current != prev_state_)
   {
-    return;
+    drawForState(current);
   }
 
-  drawForState(current);
   prev_state_ = current;
   has_prev_state_ = true;
 }
@@ -28,6 +27,16 @@ void Display::drawForState(StateMachine::State state)
 {
   uint16_t bg = colorForState(state);
   M5.Display.fillScreen(bg);
+
+  uint32_t eye_y = 102;
+  uint32_t between_eyes = 135;
+  uint32_t eye_size = 8;
+  uint32_t mouth_y = 157;
+  uint32_t mouth_width = 85;
+  uint32_t mouth_height = 4;
+  M5.Display.fillCircle(160 - between_eyes / 2, eye_y, eye_size, TFT_WHITE);
+  M5.Display.fillCircle(160 + between_eyes / 2, eye_y, eye_size, TFT_WHITE);
+  M5.Display.fillRect(160 - mouth_width / 2, mouth_y, mouth_width, mouth_height, TFT_WHITE);
 }
 
 uint16_t Display::colorForState(StateMachine::State state)
