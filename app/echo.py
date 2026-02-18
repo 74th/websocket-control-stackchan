@@ -21,10 +21,6 @@ async def setup(proxy: WsProxy):
 
 @app.talk_session
 async def talk_session(proxy: WsProxy):
-    text = await proxy.listen()
-    logger.info("Heard: %s", text)
-    await proxy.speak(text)
-
     while True:
         text = await proxy.listen()
         if not text:

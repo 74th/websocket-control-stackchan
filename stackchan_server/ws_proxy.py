@@ -6,6 +6,7 @@ import struct
 import wave
 from contextlib import suppress
 from datetime import datetime
+from enum import IntEnum
 from logging import getLogger
 from pathlib import Path
 from typing import Optional
@@ -22,19 +23,6 @@ _RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 _WS_HEADER_FMT = "<BBBHH"  # kind, msg_type, reserved, seq, payload_bytes
 _WS_HEADER_SIZE = struct.calcsize(_WS_HEADER_FMT)
-_WS_KIND_PCM = 1
-_WS_KIND_WAV = 2
-_WS_KIND_STATE_CMD = 3
-_WS_KIND_WAKEWORD_EVT = 4
-_WS_KIND_STATE_EVT = 5
-_WS_KIND_SPEAK_DONE_EVT = 6
-_WS_MSG_START = 1
-_WS_MSG_DATA = 2
-_WS_MSG_END = 3
-
-_STATE_IDLE = 0
-_STATE_LISTENING = 1
-_STATE_THINKING = 2
 
 _SAMPLE_RATE_HZ = 16000
 _CHANNELS = 1
@@ -52,6 +40,28 @@ class TimeoutError(Exception):
 
 class EmptyTranscriptError(Exception):
     pass
+
+
+class FirmwareState(IntEnum):
+    IDLE = 0
+    LISTENING = 1
+    THINKING = 2
+    SPEAKING = 3
+
+
+class _WsKind(IntEnum):
+    PCM = 1
+    WAV = 2
+    STATE_CMD = 3
+    WAKEWORD_EVT = 4
+    STATE_EVT = 5
+    SPEAK_DONE_EVT = 6
+
+
+class _WsMsgType(IntEnum):
+    START = 1
+    DATA = 2
+    END = 3
 
 
 def create_voicevox_client() -> VVClient:
@@ -99,7 +109,7 @@ class WsProxy:
             await asyncio.sleep(0.05)
 
     async def listen(self) -> str:
-        await self.send_state_command(_STATE_LISTENING)
+        await self.send_state_command(FirmwareState.LISTENING)
         loop = asyncio.get_running_loop()
         last_counter = self._pcm_data_counter
         last_data_time = loop.time()
@@ -120,7 +130,7 @@ class WsProxy:
                 last_data_time = loop.time()
             if (loop.time() - last_data_time) >= _LISTEN_AUDIO_TIMEOUT_SECONDS:
                 if not self._closed:
-                    await self.send_state_command(_STATE_IDLE)
+                    await self.send_state_command(FirmwareState.IDLE)
                 raise TimeoutError("Timed out after audio data inactivity from firmware")
             await asyncio.sleep(0.05)
 
@@ -134,7 +144,7 @@ class WsProxy:
             timeout_seconds=120.0,
         )
         if not self._closed:
-            await self.send_state_command(_STATE_IDLE)
+            await self.send_state_command(FirmwareState.IDLE)
 
     async def _wait_for_speaking_finished(
         self,
@@ -153,11 +163,11 @@ class WsProxy:
                 raise TimeoutError("Timed out waiting for speaking finished event")
             await asyncio.sleep(0.05)
 
-    async def send_state_command(self, state_id: int) -> None:
+    async def send_state_command(self, state_id: int | FirmwareState) -> None:
         await self._send_state_command(state_id)
 
     async def reset_state(self) -> None:
-        await self.send_state_command(_STATE_IDLE)
+        await self.send_state_command(FirmwareState.IDLE)
 
     async def start(self) -> None:
         if self._receiving_task is None:
@@ -220,32 +230,32 @@ class WsProxy:
                     await self.ws.close(code=1003, reason="payload length mismatch")
                     break
 
-                if kind == _WS_KIND_PCM:
-                    if msg_type == _WS_MSG_START:
+                if kind == _WsKind.PCM:
+                    if msg_type == _WsMsgType.START:
                         self._handle_start()
                         continue
 
-                    if msg_type == _WS_MSG_DATA:
+                    if msg_type == _WsMsgType.DATA:
                         if not self._handle_data(payload_bytes, payload):
                             break
                         continue
 
-                    if msg_type == _WS_MSG_END:
+                    if msg_type == _WsMsgType.END:
                         await self._handle_end(payload_bytes, payload)
                         continue
 
                     await self.ws.close(code=1003, reason="unknown PCM msg type")
                     break
 
-                if kind == _WS_KIND_WAKEWORD_EVT:
+                if kind == _WsKind.WAKEWORD_EVT:
                     self._handle_wakeword_event(msg_type, payload)
                     continue
 
-                if kind == _WS_KIND_STATE_EVT:
+                if kind == _WsKind.STATE_EVT:
                     self._handle_state_event(msg_type, payload)
                     continue
 
-                if kind == _WS_KIND_SPEAK_DONE_EVT:
+                if kind == _WsKind.SPEAK_DONE_EVT:
                     self._handle_speak_done_event(msg_type, payload)
                     continue
 
@@ -291,7 +301,7 @@ class WsProxy:
             return
 
         # Uplink audio has been fully received: tell firmware to enter Thinking state.
-        await self._send_state_command(_STATE_THINKING)
+        await self._send_state_command(FirmwareState.THINKING)
 
         frames = len(self._pcm_buffer) // (_SAMPLE_WIDTH * _CHANNELS)
         duration_seconds = frames / float(_SAMPLE_RATE_HZ)
@@ -322,7 +332,7 @@ class WsProxy:
         self._message_ready.set()
 
     def _handle_wakeword_event(self, msg_type: int, payload: bytes) -> None:
-        if msg_type != _WS_MSG_DATA:
+        if msg_type != _WsMsgType.DATA:
             return
         if len(payload) < 1:
             return
@@ -330,14 +340,19 @@ class WsProxy:
         self._wakeword_event.set()
 
     def _handle_state_event(self, msg_type: int, payload: bytes) -> None:
-        if msg_type != _WS_MSG_DATA:
+        if msg_type != _WsMsgType.DATA:
             return
         if len(payload) < 1:
             return
-        logger.info("Received firmware state=%d", int(payload[0]))
+        raw_state = int(payload[0])
+        try:
+            state = FirmwareState(raw_state)
+            logger.info("Received firmware state=%s(%d)", state.name, raw_state)
+        except ValueError:
+            logger.info("Received firmware state=%d", raw_state)
 
     def _handle_speak_done_event(self, msg_type: int, payload: bytes) -> None:
-        if msg_type != _WS_MSG_DATA:
+        if msg_type != _WsMsgType.DATA:
             return
         if len(payload) < 1:
             return
@@ -345,12 +360,12 @@ class WsProxy:
         self._speaking = False
         logger.info("Received speak done event")
 
-    async def _send_state_command(self, state_id: int) -> None:
-        payload = struct.pack("<B", state_id)
+    async def _send_state_command(self, state_id: int | FirmwareState) -> None:
+        payload = struct.pack("<B", int(state_id))
         hdr = struct.pack(
             _WS_HEADER_FMT,
-            _WS_KIND_STATE_CMD,
-            _WS_MSG_DATA,
+            _WsKind.STATE_CMD.value,
+            _WsMsgType.DATA.value,
             0,
             self._down_seq,
             len(payload),
@@ -430,8 +445,8 @@ class WsProxy:
         start_payload = struct.pack("<IH", tts_sample_rate, tts_channels)
         start_hdr = struct.pack(
             _WS_HEADER_FMT,
-            _WS_KIND_WAV,
-            _WS_MSG_START,
+            _WsKind.WAV.value,
+            _WsMsgType.START.value,
             0,
             self._down_seq,
             len(start_payload),
@@ -445,8 +460,8 @@ class WsProxy:
             chunk = segment_pcm[seg_offset : seg_offset + _DOWN_WAV_CHUNK]
             data_hdr = struct.pack(
                 _WS_HEADER_FMT,
-                _WS_KIND_WAV,
-                _WS_MSG_DATA,
+                _WsKind.WAV.value,
+                _WsMsgType.DATA.value,
                 0,
                 self._down_seq,
                 len(chunk),
@@ -457,8 +472,8 @@ class WsProxy:
 
         end_hdr = struct.pack(
             _WS_HEADER_FMT,
-            _WS_KIND_WAV,
-            _WS_MSG_END,
+            _WsKind.WAV.value,
+            _WsMsgType.END.value,
             0,
             self._down_seq,
             0,
@@ -467,4 +482,4 @@ class WsProxy:
         self._down_seq += 1
 
 
-__all__ = ["WsProxy", "TimeoutError", "EmptyTranscriptError", "create_voicevox_client"]
+__all__ = ["WsProxy", "FirmwareState", "TimeoutError", "EmptyTranscriptError", "create_voicevox_client"]
