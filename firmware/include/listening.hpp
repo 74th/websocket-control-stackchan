@@ -15,6 +15,10 @@ public:
   // allocate buffers / reset counters; call once from setup
   void init();
 
+  // Listening ステートに入る/出る際の処理
+  void begin();
+  void end();
+
   // begin a new streaming session (sends START); returns false if WS not connected
   bool startStreaming();
 

@@ -104,9 +104,10 @@ void setup()
   mic_cfg.sample_rate = SAMPLE_RATE;
   mic_cfg.stereo = false;
   M5.Mic.config(mic_cfg);
-  M5.Mic.begin();
 
   listening.init();
+  speaking.init();
+  wakeUpWord.init();
 
   // M5.Display.setTextSize(2);
   M5.Display.println("CoreS3 SE - AI Home Agent (WS)");
@@ -116,14 +117,36 @@ void setup()
 
   // Mic/Speaking setup
   M5.Speaker.setVolume(200); // 0-255
-  speaking.init();
-
-  wakeUpWord.init();
 
   wsClient.begin(SERVER_HOST, SERVER_PORT, SERVER_PATH);
   wsClient.onEvent(handleWsEvent);
   wsClient.setReconnectInterval(2000);
   wsClient.enableHeartbeat(15000, 3000, 2);
+
+  // State entry/exit hooks
+  stateMachine.addStateEntryEvent(StateMachine::Idle, [](StateMachine::State, StateMachine::State) {
+    wakeUpWord.begin();
+  });
+  stateMachine.addStateExitEvent(StateMachine::Idle, [](StateMachine::State, StateMachine::State) {
+    wakeUpWord.end();
+  });
+
+  stateMachine.addStateEntryEvent(StateMachine::Listening, [](StateMachine::State, StateMachine::State) {
+    listening.begin();
+  });
+  stateMachine.addStateExitEvent(StateMachine::Listening, [](StateMachine::State, StateMachine::State) {
+    listening.end();
+  });
+
+  stateMachine.addStateEntryEvent(StateMachine::Speaking, [](StateMachine::State, StateMachine::State) {
+    speaking.begin();
+  });
+  stateMachine.addStateExitEvent(StateMachine::Speaking, [](StateMachine::State, StateMachine::State) {
+    speaking.end();
+  });
+
+  // initial state setup (Idle)
+  wakeUpWord.begin();
 }
 
 void loop()

@@ -13,22 +13,10 @@ Listening::Listening(WebSocketsClient &ws, StateMachine &sm, int sampleRate)
 
 void Listening::init()
 {
-  if (!events_registered_)
+  if (ring_buffer_)
   {
-    events_registered_ = true;
-    state_.addStateEntryEvent(StateMachine::Listening, [this](StateMachine::State, StateMachine::State) {
-      M5.Mic.begin();
-      startStreaming();
-    });
-    state_.addStateExitEvent(StateMachine::Listening, [this](StateMachine::State next, StateMachine::State) {
-      stopStreaming();
-      M5.Mic.end();
-    });
-
-    // Speaking 中はマイクを停止（安全のためエントリでも end）
-    state_.addStateEntryEvent(StateMachine::Speaking, [](StateMachine::State, StateMachine::State) {
-      M5.Mic.end();
-    });
+    heap_caps_free(ring_buffer_);
+    ring_buffer_ = nullptr;
   }
 
   if (ring_buffer_)
@@ -44,6 +32,18 @@ void Listening::init()
   ring_write_ = ring_read_ = ring_available_ = 0;
   seq_counter_ = 0;
   streaming_ = false;
+}
+
+void Listening::begin()
+{
+  M5.Mic.begin();
+  startStreaming();
+}
+
+void Listening::end()
+{
+  stopStreaming();
+  M5.Mic.end();
 }
 
 bool Listening::startStreaming()

@@ -20,6 +20,17 @@ void Speaking::init()
   reset();
 }
 
+void Speaking::begin()
+{
+  // 念のためマイクを停止し、再生に集中させる
+  M5.Mic.end();
+}
+
+void Speaking::end()
+{
+  // Idle 側でマイクを再開するため、ここでは何もしない
+}
+
 void Speaking::handleWavMessage(const WsHeader &hdr, const uint8_t *body, size_t bodyLen)
 {
   auto msgType = static_cast<MessageType>(hdr.messageType);

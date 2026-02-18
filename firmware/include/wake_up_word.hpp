@@ -13,6 +13,10 @@ public:
   // ESP_SR を初期化し、ステートマシンのエントリ/エグジットイベントや SR のイベントハンドラを登録する
   void init();
 
+  // ステート開始/終了時の処理（Idle 入退場で利用）
+  void begin();
+  void end();
+
   // SR にオーディオを供給する（Idle ループで利用）
   void feedAudio(const int16_t *samples, size_t count);
 

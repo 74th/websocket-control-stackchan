@@ -14,19 +14,19 @@ void WakeUpWord::init()
   ESP_SR_M5.onEvent(onSrEventForward);
   bool success = ESP_SR_M5.begin();
   log_i("ESP_SR_M5.begin() = %d", success);
+}
 
-  // Idle の終了時にマイクを止めて SR を一時停止
-  state_.addStateExitEvent(StateMachine::Idle, [](StateMachine::State, StateMachine::State) {
-    M5.Mic.end();
-    ESP_SR_M5.pause();
-  });
+void WakeUpWord::begin()
+{
+  M5.Mic.begin();
+  ESP_SR_M5.setMode(SR_MODE_WAKEWORD);
+  ESP_SR_M5.resume();
+}
 
-  // Idle に戻ったら WakeWord モードで再開
-  state_.addStateEntryEvent(StateMachine::Idle, [](StateMachine::State, StateMachine::State) {
-    M5.Mic.begin();
-    ESP_SR_M5.setMode(SR_MODE_WAKEWORD);
-    ESP_SR_M5.resume();
-  });
+void WakeUpWord::end()
+{
+  M5.Mic.end();
+  ESP_SR_M5.pause();
 }
 
 void WakeUpWord::feedAudio(const int16_t *samples, size_t count)
