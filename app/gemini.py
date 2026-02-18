@@ -15,7 +15,7 @@ logger.setLevel("DEBUG")
 
 app = StackChanApp()
 
-client = genai.Client(vertexai=True)
+client = genai.Client(vertexai=True).aio
 
 @app.setup
 async def setup(proxy: WsProxy):
@@ -40,14 +40,12 @@ async def talk_session(proxy: WsProxy):
         logger.info("Human: %s", text)
 
         # AI応答の取得
-        resp = await asyncio.to_thread(chat.send_message, text)
+        resp = await chat.send_message(text)
 
         # 発話
         logger.info("AI: %s", resp.text)
         if resp.text:
             await proxy.speak(resp.text)
-        else:
-            await proxy.speak("すみません、うまく答えられませんでした。")
 
 
 

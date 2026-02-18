@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+from logging import getLogger
 from typing import Awaitable, Callable, Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from google.cloud import speech
 
-from .ws_proxy import STATE_IDLE, WsProxy
+from .ws_proxy import WsProxy
+
+logger = getLogger(__name__)
 
 
 class StackChanApp:
@@ -45,9 +48,22 @@ class StackChanApp:
                     await asyncio.sleep(0.05)
                 else:
                     await proxy.wait_for_talk_session()
-                    await self._talk_session_fn(proxy)
-                    if not proxy.closed:
-                        await proxy.send_state_command(STATE_IDLE)
+                    disconnected = False
+                    try:
+                        await self._talk_session_fn(proxy)
+                    except WebSocketDisconnect:
+                        disconnected = True
+                        raise
+                    except Exception:
+                        logger.exception("talk_session failed")
+                    finally:
+                        if not disconnected and not proxy.closed:
+                            try:
+                                await proxy.reset_state()
+                            except WebSocketDisconnect:
+                                disconnected = True
+                            except Exception:
+                                logger.exception("reset_state failed")
 
                 if proxy.receive_task and proxy.receive_task.done():
                     break

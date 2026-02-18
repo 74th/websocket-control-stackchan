@@ -36,6 +36,32 @@ static Display display(stateMachine);
 namespace
 {
 uint16_t g_uplink_seq = 0;
+uint32_t g_last_comm_ms = 0;
+constexpr uint32_t kCommTimeoutMs = 60000;
+bool g_has_connected_once = false;
+
+void markCommunicationActive()
+{
+  g_last_comm_ms = millis();
+}
+
+void handleCommunicationTimeout()
+{
+  if (g_last_comm_ms == 0)
+  {
+    return;
+  }
+
+  uint32_t elapsed = millis() - g_last_comm_ms;
+  StateMachine::State current = stateMachine.getState();
+  if (elapsed >= kCommTimeoutMs &&
+      (current == StateMachine::Thinking || current == StateMachine::Speaking))
+  {
+    log_w("Communication timeout in state=%u; forcing Idle", static_cast<unsigned>(current));
+    stateMachine.setState(StateMachine::Idle);
+    markCommunicationActive();
+  }
+}
 
 bool sendUplinkPacket(MessageKind kind, MessageType msgType, const uint8_t *payload, size_t payload_len)
 {
@@ -59,6 +85,7 @@ bool sendUplinkPacket(MessageKind kind, MessageType msgType, const uint8_t *payl
     memcpy(packet.data() + sizeof(WsHeader), payload, payload_len);
   }
   wsClient.sendBIN(packet.data(), packet.size());
+  markCommunicationActive();
   return true;
 }
 
@@ -136,17 +163,29 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
   case WStype_DISCONNECTED:
     // M5.Display.println("WS: disconnected");
     log_i("WS disconnected");
+    if (g_has_connected_once)
+    {
+      stateMachine.setState(StateMachine::Disconnected);
+    }
     break;
   case WStype_CONNECTED:
     // M5.Display.printf("WS: connected %s\n", SERVER_PATH);
     log_i("WS connected to %s", SERVER_PATH);
+    if (stateMachine.getState() == StateMachine::Disconnected)
+    {
+      stateMachine.setState(StateMachine::Idle);
+    }
+    g_has_connected_once = true;
+    markCommunicationActive();
     notifyCurrentState(stateMachine.getState());
     break;
   case WStype_TEXT:
     //  M5.Display.printf("WS msg: %.*s\n", (int)length, payload);
+    markCommunicationActive();
     break;
   case WStype_BIN:
   {
+    markCommunicationActive();
     if (length < sizeof(WsHeader))
     {
       // M5.Display.println("WS bin too short");
@@ -220,6 +259,7 @@ void setup()
   M5.Speaker.setVolume(200); // 0-255
 
   wsClient.begin(SERVER_HOST, SERVER_PORT, SERVER_PATH);
+  markCommunicationActive();
   wsClient.onEvent(handleWsEvent);
   wsClient.setReconnectInterval(2000);
   wsClient.enableHeartbeat(15000, 3000, 2);
@@ -261,6 +301,7 @@ void loop()
 {
   M5.update();
   wsClient.loop();
+  handleCommunicationTimeout();
 
   StateMachine::State current = stateMachine.getState();
   switch (current)
@@ -276,6 +317,9 @@ void loop()
     break;
   case StateMachine::Speaking:
     speaking.loop();
+    break;
+  case StateMachine::Disconnected:
+    // Wait for WS reconnect.
     break;
   default:
     break;

@@ -29,7 +29,12 @@ void Speaking::begin()
 
 void Speaking::end()
 {
-  // Idle 側でマイクを再開するため、ここでは何もしない
+  if (M5.Speaker.isPlaying())
+  {
+    M5.Speaker.stop();
+  }
+  M5.Speaker.end();
+  reset();
 }
 
 void Speaking::handleWavMessage(const WsHeader &hdr, const uint8_t *body, size_t bodyLen)
@@ -129,13 +134,8 @@ void Speaking::loop()
     {
       on_speak_finished_();
     }
-    M5.Speaker.stop();
-    M5.Speaker.end();
     delay(10);
     state_.setState(StateMachine::Idle);
-    reset();
-    playing_ = false;
-    streaming_ = false;
   }
 }
 

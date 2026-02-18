@@ -51,6 +51,8 @@ uint16_t Display::colorForState(StateMachine::State state)
     return TFT_ORANGE;
   case StateMachine::Speaking:
     return TFT_GREEN;
+  case StateMachine::Disconnected:
+    return TFT_RED;
   default:
     return TFT_DARKGREY;
   }
