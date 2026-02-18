@@ -1,5 +1,6 @@
 #include "speaking.hpp"
 #include <cstring>
+#include <utility>
 
 void Speaking::reset()
 {
@@ -124,6 +125,10 @@ void Speaking::loop()
   if (playing_ && !M5.Speaker.isPlaying())
   {
     log_i("TTS play done");
+    if (on_speak_finished_)
+    {
+      on_speak_finished_();
+    }
     M5.Speaker.stop();
     M5.Speaker.end();
     delay(10);
@@ -132,4 +137,9 @@ void Speaking::loop()
     playing_ = false;
     streaming_ = false;
   }
+}
+
+void Speaking::setSpeakFinishedCallback(std::function<void()> cb)
+{
+  on_speak_finished_ = std::move(cb);
 }

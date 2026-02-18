@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <cstdint>
+#include <functional>
 #include <M5Unified.h>
 #include "protocols.hpp"
 #include "state_machine.hpp"
@@ -27,6 +28,8 @@ public:
   // Reset any buffered audio / playback state
   void reset();
 
+  void setSpeakFinishedCallback(std::function<void()> cb);
+
 private:
   StateMachine &state_;
   std::vector<uint8_t> buffer_[3];
@@ -37,4 +40,5 @@ private:
   uint16_t next_seq_ = 0;
   uint32_t sample_rate_ = 24000;
   uint16_t channels_ = 1;
+  std::function<void()> on_speak_finished_;
 };

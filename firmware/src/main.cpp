@@ -35,6 +35,60 @@ static Display display(stateMachine);
 // Protocol types are defined in include/protocols.hpp
 namespace
 {
+uint16_t g_uplink_seq = 0;
+
+bool sendUplinkPacket(MessageKind kind, MessageType msgType, const uint8_t *payload, size_t payload_len)
+{
+  if ((WiFi.status() != WL_CONNECTED) || !wsClient.isConnected())
+  {
+    return false;
+  }
+
+  WsHeader header{};
+  header.kind = static_cast<uint8_t>(kind);
+  header.messageType = static_cast<uint8_t>(msgType);
+  header.reserved = 0;
+  header.seq = g_uplink_seq++;
+  header.payloadBytes = static_cast<uint16_t>(payload_len);
+
+  std::vector<uint8_t> packet;
+  packet.resize(sizeof(WsHeader) + payload_len);
+  memcpy(packet.data(), &header, sizeof(WsHeader));
+  if (payload_len > 0 && payload != nullptr)
+  {
+    memcpy(packet.data() + sizeof(WsHeader), payload, payload_len);
+  }
+  wsClient.sendBIN(packet.data(), packet.size());
+  return true;
+}
+
+void notifyWakeWordDetected()
+{
+  const uint8_t payload = 1; // detected
+  if (!sendUplinkPacket(MessageKind::WakeWordEvt, MessageType::DATA, &payload, sizeof(payload)))
+  {
+    log_w("Failed to send WakeWordEvt");
+  }
+}
+
+void notifyCurrentState(StateMachine::State state)
+{
+  const uint8_t payload = static_cast<uint8_t>(state);
+  if (!sendUplinkPacket(MessageKind::StateEvt, MessageType::DATA, &payload, sizeof(payload)))
+  {
+    log_w("Failed to send StateEvt state=%u", static_cast<unsigned>(payload));
+  }
+}
+
+void notifySpeakDone()
+{
+  const uint8_t payload = 1; // done
+  if (!sendUplinkPacket(MessageKind::SpeakDoneEvt, MessageType::DATA, &payload, sizeof(payload)))
+  {
+    log_w("Failed to send SpeakDoneEvt");
+  }
+}
+
 bool applyRemoteStateCommand(const uint8_t *body, size_t bodyLen)
 {
   if (body == nullptr || bodyLen < 1)
@@ -86,6 +140,7 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
   case WStype_CONNECTED:
     // M5.Display.printf("WS: connected %s\n", SERVER_PATH);
     log_i("WS connected to %s", SERVER_PATH);
+    notifyCurrentState(stateMachine.getState());
     break;
   case WStype_TEXT:
     //  M5.Display.printf("WS msg: %.*s\n", (int)length, payload);
@@ -150,7 +205,13 @@ void setup()
 
   listening.init();
   speaking.init();
+  speaking.setSpeakFinishedCallback([]() {
+    notifySpeakDone();
+  });
   wakeUpWord.init();
+  wakeUpWord.setWakeWordDetectedCallback([]() {
+    notifyWakeWordDetected();
+  });
   display.init();
 
   connectWiFi();
@@ -165,6 +226,7 @@ void setup()
 
   // State entry/exit hooks
   stateMachine.addStateEntryEvent(StateMachine::Idle, [](StateMachine::State, StateMachine::State) {
+    notifyCurrentState(StateMachine::Idle);
     wakeUpWord.begin();
   });
   stateMachine.addStateExitEvent(StateMachine::Idle, [](StateMachine::State, StateMachine::State) {
@@ -172,6 +234,7 @@ void setup()
   });
 
   stateMachine.addStateEntryEvent(StateMachine::Listening, [](StateMachine::State, StateMachine::State) {
+    notifyCurrentState(StateMachine::Listening);
     listening.begin();
   });
   stateMachine.addStateExitEvent(StateMachine::Listening, [](StateMachine::State, StateMachine::State) {
@@ -179,10 +242,15 @@ void setup()
   });
 
   stateMachine.addStateEntryEvent(StateMachine::Speaking, [](StateMachine::State, StateMachine::State) {
+    notifyCurrentState(StateMachine::Speaking);
     speaking.begin();
   });
   stateMachine.addStateExitEvent(StateMachine::Speaking, [](StateMachine::State, StateMachine::State) {
     speaking.end();
+  });
+
+  stateMachine.addStateEntryEvent(StateMachine::Thinking, [](StateMachine::State, StateMachine::State) {
+    notifyCurrentState(StateMachine::Thinking);
   });
 
   // initial state setup (Idle)

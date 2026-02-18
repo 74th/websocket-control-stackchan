@@ -15,6 +15,9 @@ enum class MessageKind : uint8_t {
   AudioPcm = 1, // クライアント→サーバ（PCM16LE）
   AudioWav = 2, // サーバ→クライアント（WAV バイト列）
   StateCmd = 3, // サーバ→クライアント（状態遷移指示）
+  WakeWordEvt = 4, // クライアント→サーバ（wake word 検知通知）
+  StateEvt = 5, // クライアント→サーバ（現在状態通知）
+  SpeakDoneEvt = 6, // クライアント→サーバ（発話完了通知）
 };
 
 enum class MessageType : uint8_t {
@@ -64,12 +67,39 @@ struct __attribute__((packed)) WsHeader {
   - `3=Speaking`
 - 現行運用: uplink の `END` 受信完了直後に `Thinking` を送信。
 
+### Uplink: kind = WakeWordEvt (4)
+
+- 方向: クライアント -> サーバ
+- メッセージ種別: `DATA` のみ使用
+- payload: 1 byte（`1=detected`）
+- 役割: Idle 中に WakeWord を検知したことを通知し、サーバー側の対話セッション開始トリガに使う。
+
+### Uplink: kind = StateEvt (5)
+
+- 方向: クライアント -> サーバ
+- メッセージ種別: `DATA` のみ使用
+- payload: 1 byte の current state id
+  - `0=Idle`
+  - `1=Listening`
+  - `2=Thinking`
+  - `3=Speaking`
+- 役割: サーバー側で状態同期に利用する。
+
+### Uplink: kind = SpeakDoneEvt (6)
+
+- 方向: クライアント -> サーバ
+- メッセージ種別: `DATA` のみ使用
+- payload: 1 byte（`1=done`）
+- 役割: TTS再生が完了したことを通知する。`Idle` 遷移とは独立に扱える。
+
 ### kind の拡張例
 
 - AudioPcm (1): 現行の PCM16LE アップリンク
 - AudioWav (2): WAV ダウンリンク
 - StateCmd (3): 状態遷移指示
-- 予約: 4 以降を将来のコーデック / 制御用に確保
+- WakeWordEvt (4): wake word 検知通知
+- StateEvt (5): 現在状態通知
+- SpeakDoneEvt (6): 発話完了通知
 
 ### 簡易バイト例（AudioPcm / DATA）
 

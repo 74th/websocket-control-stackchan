@@ -29,27 +29,29 @@ async def setup(proxy: WsProxy):
         ),
     )
 
-@app.loop
-async def loop(proxy: WsProxy):
+@app.talk_session
+async def talk_session(proxy: WsProxy):
     global chat
 
-    # 音声の受信
-    text = await proxy.get_message_async()
-    logger.info("Human: %s", text)
+    while True:
+        text = await proxy.listen()
+        if not text:
+            return
+        logger.info("Human: %s", text)
 
-    # AI応答の取得
-    resp = await asyncio.to_thread(chat.send_message, text)
+        # AI応答の取得
+        resp = await asyncio.to_thread(chat.send_message, text)
 
-    # 発話
-    logger.info("AI: %s", resp.text)
-    if resp.text:
-        await proxy.start_talking(resp.text)
-    else:
-        await proxy.start_talking("すみません、うまく答えられませんでした。")
+        # 発話
+        logger.info("AI: %s", resp.text)
+        if resp.text:
+            await proxy.speak(resp.text)
+        else:
+            await proxy.speak("すみません、うまく答えられませんでした。")
 
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("app.echo:app.fastapi", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app.gemini:app.fastapi", host="0.0.0.0", port=8000, reload=True)
