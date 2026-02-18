@@ -101,8 +101,6 @@ class WsProxy:
 
         self._synthesizing = False
         self._speaking = False
-        self._speaking_done = asyncio.Event()
-        self._speaking_done.set()
         self._firmware_state: Optional[int] = None
         self._firmware_state_counter = 0
         self._speak_finished_counter = 0
@@ -122,27 +120,6 @@ class WsProxy:
 
     def has_message(self) -> bool:
         return self._message_ready.is_set()
-
-    def get_message(self) -> str:
-        if not self._message_ready.is_set():
-            raise RuntimeError("No message available")
-
-        text = self._transcript or ""
-        self._transcript = None
-        self._message_ready.clear()
-        return text
-
-    async def get_message_async(self) -> str:
-        while True:
-            if self._message_error is not None:
-                err = self._message_error
-                self._message_error = None
-                raise err
-            if self._message_ready.is_set():
-                return self.get_message()
-            if self._closed:
-                raise WebSocketDisconnect()
-            await asyncio.sleep(0.05)
 
     async def wait_for_talk_session(self) -> None:
         while True:
@@ -164,7 +141,10 @@ class WsProxy:
                 self._message_error = None
                 raise err
             if self._message_ready.is_set():
-                return self.get_message()
+                text = self._transcript or ""
+                self._transcript = None
+                self._message_ready.clear()
+                return text
             if self._closed:
                 raise WebSocketDisconnect()
             if self._pcm_data_counter != last_counter:
@@ -181,14 +161,14 @@ class WsProxy:
         await self._start_talking_stream(text)
         if not self._speaking:
             return
-        await self.wait_for_speaking_finished(
+        await self._wait_for_speaking_finished(
             min_counter=start_counter + 1,
             timeout_seconds=120.0,
         )
         if not self._closed:
             await self.send_state_command(STATE_IDLE)
 
-    async def wait_for_speaking_finished(
+    async def _wait_for_speaking_finished(
         self,
         *,
         min_counter: int = 0,
@@ -203,27 +183,6 @@ class WsProxy:
                 raise WebSocketDisconnect()
             if deadline and loop.time() >= deadline:
                 raise TimeoutError("Timed out waiting for speaking finished event")
-            await asyncio.sleep(0.05)
-
-    async def wait_for_state(
-        self,
-        target_state: int,
-        *,
-        min_counter: int = 0,
-        timeout_seconds: Optional[float] = None,
-    ) -> None:
-        loop = asyncio.get_running_loop()
-        deadline = (loop.time() + timeout_seconds) if timeout_seconds else None
-        while True:
-            if (
-                self._firmware_state == target_state
-                and self._firmware_state_counter >= min_counter
-            ):
-                return
-            if self._closed:
-                raise WebSocketDisconnect()
-            if deadline and loop.time() >= deadline:
-                raise TimeoutError(f"Timed out waiting for firmware state {target_state}")
             await asyncio.sleep(0.05)
 
     async def send_state_command(self, state_id: int) -> None:
@@ -246,7 +205,6 @@ class WsProxy:
     async def _start_talking_stream(self, text: str) -> None:
         self._synthesizing = True
         self._speaking = True
-        self._speaking_done.clear()
         try:
             async with create_voicevox_client() as client:
                 audio_query = await client.create_audio_query(text, speaker=29)
@@ -256,14 +214,12 @@ class WsProxy:
             if len(pcm_bytes) == 0:
                 self._synthesizing = False
                 self._speaking = False
-                self._speaking_done.set()
                 return
 
             if tts_sample_width != SAMPLE_WIDTH:
                 await self.ws.send_json({"error": f"unsupported sample width {tts_sample_width}"})
                 self._synthesizing = False
                 self._speaking = False
-                self._speaking_done.set()
                 return
 
             bytes_per_second = tts_sample_rate * tts_channels * tts_sample_width
@@ -273,7 +229,6 @@ class WsProxy:
                 await self.ws.send_json({"error": "invalid segment size computed"})
                 self._synthesizing = False
                 self._speaking = False
-                self._speaking_done.set()
                 return
 
             self._synthesizing = False
@@ -282,17 +237,7 @@ class WsProxy:
         except Exception as exc:  # pragma: no cover
             self._synthesizing = False
             self._speaking = False
-            self._speaking_done.set()
             await self.ws.send_json({"error": f"voicevox synthesis failed: {exc}"})
-
-    def is_synthesizing(self) -> bool:
-        return self._synthesizing
-
-    def is_speaking(self) -> bool:
-        return self._speaking
-
-    async def wait_until_speaking_done(self) -> None:
-        await self._speaking_done.wait()
 
     async def _receive_loop(self) -> None:
         try:
@@ -348,7 +293,6 @@ class WsProxy:
             self._closed = True
             self._speaking = False
             self._synthesizing = False
-            self._speaking_done.set()
 
     def _handle_start(self) -> None:
         logger.info("Received START")
@@ -441,7 +385,6 @@ class WsProxy:
             return
         self._speak_finished_counter += 1
         self._speaking = False
-        self._speaking_done.set()
         logger.info("Received speak done event")
 
     async def _send_state_command(self, state_id: int) -> None:
