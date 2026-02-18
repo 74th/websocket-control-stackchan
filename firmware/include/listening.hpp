@@ -21,8 +21,8 @@ public:
   // stop streaming (flush remaining DATA and send END)
   bool stopStreaming();
 
-  // perform recording and periodic DATA sends; returns false on send failure
-  bool loop();
+  // perform recording and periodic DATA sends; handles errors/silence internally
+  void loop();
 
   // 最近の平均音量（絶対値平均）を取得
   int32_t getLastLevel() const { return last_level_; }

@@ -88,11 +88,11 @@ bool Listening::stopStreaming()
   return ok;
 }
 
-bool Listening::loop()
+void Listening::loop()
 {
   if (!streaming_)
   {
-    return true;
+    return;
   }
 
   static int16_t mic_buf[256];
@@ -117,11 +117,32 @@ bool Listening::loop()
     if (!sendPacket(MessageType::DATA, send_buf.data(), got))
     {
       streaming_ = false;
-      return false;
+      M5.Display.println("WS send failed (data)");
+      log_i("WS send failed (data)");
+      state_.setState(StateMachine::Idle);
+      return;
     }
   }
 
-  return true;
+  // 無音が3秒続いたら終了
+  if (shouldStopForSilence())
+  {
+    log_i("Auto stop: silence detected (avg=%ld)", static_cast<long>(last_level_));
+    M5.Display.fillScreen(TFT_BLACK);
+    M5.Display.setCursor(10, 10);
+    M5.Display.setTextSize(3);
+    M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
+    if (!stopStreaming())
+    {
+      M5.Display.println("WS send failed (tail/end)");
+      log_i("WS send failed (tail/end)");
+    }
+    state_.setState(StateMachine::Idle);
+    M5.Display.println("Stopped (silence)");
+
+    // 終了直後のTTS再生でMic/Speakerが競合しないよう、少し待つ
+    delay(20);
+  }
 }
 
 void Listening::updateLevelStats(const int16_t *samples, size_t sampleCount)

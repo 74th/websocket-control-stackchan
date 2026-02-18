@@ -28,7 +28,7 @@ StateMachine stateMachine;
 static WebSocketsClient wsClient;
 static Speaking speaking(stateMachine);
 static Listening listening(wsClient, stateMachine, SAMPLE_RATE);
-static WakeUpWord wakeUpWord(stateMachine);
+static WakeUpWord wakeUpWord(stateMachine, SAMPLE_RATE);
 
 // Protocol types are defined in include/protocols.hpp
 
@@ -126,78 +126,24 @@ void setup()
   wsClient.enableHeartbeat(15000, 3000, 2);
 }
 
-#define AUDIO_SAMPLE_SIZE 256
-
 void loop()
 {
   M5.update();
   wsClient.loop();
 
-  if (stateMachine.isIdle())
+  StateMachine::State current = stateMachine.getState();
+  switch (current)
   {
-    static uint32_t loop_count = 0;
-    static uint32_t error_count = 0;
-    static uint32_t last_log_time = 0;
-    static int16_t audio_buf[AUDIO_SAMPLE_SIZE];
-
-    bool success = M5.Mic.record(audio_buf, AUDIO_SAMPLE_SIZE, SAMPLE_RATE);
-    if(success)
-    {
-      wakeUpWord.feedAudio(audio_buf, AUDIO_SAMPLE_SIZE);
-
-      uint32_t now = millis();
-      if (now - last_log_time >= 1000)
-      {
-        int32_t sum = 0;
-        for (int i = 0; i < 10; i++)
-        {
-          sum += abs(audio_buf[i]);
-        }
-        log_i("loop: count=%d, avg_level=%d, errors=%d, interval=%dms", loop_count, sum / 10, error_count, now - last_log_time);
-        last_log_time = now;
-      }
-      loop_count++;
-    }
-    else
-    {
-      error_count++;
-      if (error_count % 100 == 0)
-      {
-        log_w("WARNING: M5.Mic.record failed, count=%d\n", error_count);
-      }
-    }
+  case StateMachine::Idle:
+    wakeUpWord.loop();
+    break;
+  case StateMachine::Listening:
+    listening.loop();
+    break;
+  case StateMachine::Speaking:
+    speaking.loop();
+    break;
+  default:
+    break;
   }
-  else if (stateMachine.isListening())
-  {
-    if (!listening.loop())
-    {
-      M5.Display.println("WS send failed (data)");
-      log_i("WS send failed (data)");
-      stateMachine.setState(StateMachine::Idle);
-      return;
-    }
-
-    // 無音が3秒続いたら終了
-    if (listening.shouldStopForSilence())
-    {
-      log_i("Auto stop: silence detected (avg=%ld)", static_cast<long>(listening.getLastLevel()));
-      M5.Display.fillScreen(TFT_BLACK);
-      M5.Display.setCursor(10, 10);
-      M5.Display.setTextSize(3);
-      M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
-      if (!listening.stopStreaming())
-      {
-        M5.Display.println("WS send failed (tail/end)");
-        log_i("WS send failed (tail/end)");
-      }
-      stateMachine.setState(StateMachine::Idle);
-      M5.Display.println("Stopped (silence)");
-
-      // 終了直後のTTS再生でMic/Speakerが競合しないよう、少し待つ
-      delay(20);
-    }
-  }
-
-  // ---- Downlink TTS playback (handled by Speaking) ----
-  speaking.loop();
 }

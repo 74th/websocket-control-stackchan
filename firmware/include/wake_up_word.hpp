@@ -8,7 +8,7 @@
 class WakeUpWord
 {
 public:
-  explicit WakeUpWord(StateMachine &state) : state_(state) {}
+  WakeUpWord(StateMachine &state, int sampleRate) : state_(state), sample_rate_(sampleRate) {}
 
   // ESP_SR を初期化し、ステートマシンのエントリ/エグジットイベントや SR のイベントハンドラを登録する
   void init();
@@ -16,9 +16,18 @@ public:
   // SR にオーディオを供給する（Idle ループで利用）
   void feedAudio(const int16_t *samples, size_t count);
 
+  // Idle ステート中の処理（マイク入力→SRへ供給）
+  void loop();
+
 private:
   static void onSrEventForward(sr_event_t event, int command_id, int phrase_id);
   void handleSrEvent(sr_event_t event, int command_id, int phrase_id);
 
   StateMachine &state_;
+  const int sample_rate_;
+
+  // Idle 時のログ用カウンタ
+  uint32_t loop_count_ = 0;
+  uint32_t error_count_ = 0;
+  uint32_t last_log_time_ = 0;
 };
