@@ -6,7 +6,7 @@ from typing import Awaitable, Callable, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from google.cloud import speech
 
-from .ws_proxy import STATE_IDLE, WsProxy
+from .ws_proxy import WsProxy
 
 
 class StackChanApp:
@@ -47,7 +47,7 @@ class StackChanApp:
                     await proxy.wait_for_talk_session()
                     await self._talk_session_fn(proxy)
                     if not proxy.closed:
-                        await proxy.send_state_command(STATE_IDLE)
+                        await proxy.reset_state()
 
                 if proxy.receive_task and proxy.receive_task.done():
                     break

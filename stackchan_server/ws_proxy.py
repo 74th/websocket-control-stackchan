@@ -6,7 +6,7 @@ import struct
 import wave
 from contextlib import suppress
 from datetime import datetime
-from logging import StreamHandler, getLogger
+from logging import getLogger
 from pathlib import Path
 from typing import Optional
 
@@ -16,35 +16,34 @@ from vvclient import Client as VVClient
 
 logger = getLogger(__name__)
 
-BASE_DIR = Path(__file__).resolve().parent
-RECORDINGS_DIR = BASE_DIR / "recordings"
-RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+_BASE_DIR = Path(__file__).resolve().parent
+_RECORDINGS_DIR = _BASE_DIR / "recordings"
+_RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
-WS_HEADER_FMT = "<BBBHH"  # kind, msg_type, reserved, seq, payload_bytes
-WS_HEADER_SIZE = struct.calcsize(WS_HEADER_FMT)
-WS_KIND_PCM = 1
-WS_KIND_WAV = 2
-WS_KIND_STATE_CMD = 3
-WS_KIND_WAKEWORD_EVT = 4
-WS_KIND_STATE_EVT = 5
-WS_KIND_SPEAK_DONE_EVT = 6
-WS_MSG_START = 1
-WS_MSG_DATA = 2
-WS_MSG_END = 3
+_WS_HEADER_FMT = "<BBBHH"  # kind, msg_type, reserved, seq, payload_bytes
+_WS_HEADER_SIZE = struct.calcsize(_WS_HEADER_FMT)
+_WS_KIND_PCM = 1
+_WS_KIND_WAV = 2
+_WS_KIND_STATE_CMD = 3
+_WS_KIND_WAKEWORD_EVT = 4
+_WS_KIND_STATE_EVT = 5
+_WS_KIND_SPEAK_DONE_EVT = 6
+_WS_MSG_START = 1
+_WS_MSG_DATA = 2
+_WS_MSG_END = 3
 
-STATE_IDLE = 0
-STATE_LISTENING = 1
-STATE_THINKING = 2
-STATE_SPEAKING = 3
+_STATE_IDLE = 0
+_STATE_LISTENING = 1
+_STATE_THINKING = 2
 
-SAMPLE_RATE_HZ = 16000
-CHANNELS = 1
-SAMPLE_WIDTH = 2  # bytes
+_SAMPLE_RATE_HZ = 16000
+_CHANNELS = 1
+_SAMPLE_WIDTH = 2  # bytes
 
-DOWN_WAV_CHUNK = 4096  # bytes per WebSocket frame for synthesized audio (raw PCM)
-DOWN_SEGMENT_MILLIS = 2000  # duration of a single START-DATA-END segment in milliseconds
-DOWN_SEGMENT_STAGGER_MILLIS = DOWN_SEGMENT_MILLIS // 2  # half interval for the second segment start
-LISTEN_AUDIO_TIMEOUT_SECONDS = 10.0
+_DOWN_WAV_CHUNK = 4096  # bytes per WebSocket frame for synthesized audio (raw PCM)
+_DOWN_SEGMENT_MILLIS = 2000  # duration of a single START-DATA-END segment in milliseconds
+_DOWN_SEGMENT_STAGGER_MILLIS = _DOWN_SEGMENT_MILLIS // 2  # half interval for the second segment start
+_LISTEN_AUDIO_TIMEOUT_SECONDS = 10.0
 
 
 class TimeoutError(Exception):
@@ -54,42 +53,20 @@ class TimeoutError(Exception):
 class EmptyTranscriptError(Exception):
     pass
 
+
 def create_voicevox_client() -> VVClient:
     return VVClient(base_uri="http://localhost:50021")
-
-
-def _ulaw_byte_to_linear(sample: int) -> int:
-    """Convert a single μ-law byte to 16-bit PCM (int).
-
-    Kept for compatibility if we ever need to accept μ-law again.
-    """
-
-    u_val = (~sample) & 0xFF
-    t = ((u_val & 0x0F) << 3) + 0x84
-    t <<= (u_val & 0x70) >> 4
-    if u_val & 0x80:
-        return 0x84 - t
-    return t - 0x84
-
-
-def mulaw_to_pcm16(payload: bytes) -> bytes:
-    out = bytearray(len(payload) * 2)
-    for i, b in enumerate(payload):
-        sample = _ulaw_byte_to_linear(b)
-        struct.pack_into("<h", out, i * 2, sample)
-    return bytes(out)
 
 
 class WsProxy:
     def __init__(self, websocket: WebSocket, speech_client: speech.SpeechClient):
         self.ws = websocket
         self.speech_client = speech_client
-        self.recordings_dir = RECORDINGS_DIR
+        self.recordings_dir = _RECORDINGS_DIR
         self.recordings_dir.mkdir(parents=True, exist_ok=True)
 
         self._pcm_buffer = bytearray()
         self._streaming = False
-        self._listening = False
         self._pcm_data_counter = 0
         self._message_ready = asyncio.Event()
         self._message_error: Optional[Exception] = None
@@ -99,10 +76,7 @@ class WsProxy:
         self._receiving_task: Optional[asyncio.Task] = None
         self._closed = False
 
-        self._synthesizing = False
         self._speaking = False
-        self._firmware_state: Optional[int] = None
-        self._firmware_state_counter = 0
         self._speak_finished_counter = 0
 
         self._down_seq = 0
@@ -115,12 +89,6 @@ class WsProxy:
     def receive_task(self) -> Optional[asyncio.Task]:
         return self._receiving_task
 
-    def is_being_addressed(self) -> bool:
-        return self._listening
-
-    def has_message(self) -> bool:
-        return self._message_ready.is_set()
-
     async def wait_for_talk_session(self) -> None:
         while True:
             if self._wakeword_event.is_set():
@@ -131,7 +99,7 @@ class WsProxy:
             await asyncio.sleep(0.05)
 
     async def listen(self) -> str:
-        await self.send_state_command(STATE_LISTENING)
+        await self.send_state_command(_STATE_LISTENING)
         loop = asyncio.get_running_loop()
         last_counter = self._pcm_data_counter
         last_data_time = loop.time()
@@ -150,9 +118,9 @@ class WsProxy:
             if self._pcm_data_counter != last_counter:
                 last_counter = self._pcm_data_counter
                 last_data_time = loop.time()
-            if (loop.time() - last_data_time) >= LISTEN_AUDIO_TIMEOUT_SECONDS:
+            if (loop.time() - last_data_time) >= _LISTEN_AUDIO_TIMEOUT_SECONDS:
                 if not self._closed:
-                    await self.send_state_command(STATE_IDLE)
+                    await self.send_state_command(_STATE_IDLE)
                 raise TimeoutError("Timed out after audio data inactivity from firmware")
             await asyncio.sleep(0.05)
 
@@ -166,7 +134,7 @@ class WsProxy:
             timeout_seconds=120.0,
         )
         if not self._closed:
-            await self.send_state_command(STATE_IDLE)
+            await self.send_state_command(_STATE_IDLE)
 
     async def _wait_for_speaking_finished(
         self,
@@ -188,6 +156,9 @@ class WsProxy:
     async def send_state_command(self, state_id: int) -> None:
         await self._send_state_command(state_id)
 
+    async def reset_state(self) -> None:
+        await self.send_state_command(_STATE_IDLE)
+
     async def start(self) -> None:
         if self._receiving_task is None:
             self._receiving_task = asyncio.create_task(self._receive_loop())
@@ -203,7 +174,6 @@ class WsProxy:
         await self.speak(text)
 
     async def _start_talking_stream(self, text: str) -> None:
-        self._synthesizing = True
         self._speaking = True
         try:
             async with create_voicevox_client() as client:
@@ -212,30 +182,24 @@ class WsProxy:
 
             pcm_bytes, tts_sample_rate, tts_channels, tts_sample_width = self._extract_pcm(wav_bytes)
             if len(pcm_bytes) == 0:
-                self._synthesizing = False
                 self._speaking = False
                 return
 
-            if tts_sample_width != SAMPLE_WIDTH:
+            if tts_sample_width != _SAMPLE_WIDTH:
                 await self.ws.send_json({"error": f"unsupported sample width {tts_sample_width}"})
-                self._synthesizing = False
                 self._speaking = False
                 return
 
             bytes_per_second = tts_sample_rate * tts_channels * tts_sample_width
-            segment_bytes = int(bytes_per_second * (DOWN_SEGMENT_MILLIS / 1000))
+            segment_bytes = int(bytes_per_second * (_DOWN_SEGMENT_MILLIS / 1000))
 
             if segment_bytes <= 0:
                 await self.ws.send_json({"error": "invalid segment size computed"})
-                self._synthesizing = False
                 self._speaking = False
                 return
 
-            self._synthesizing = False
-
             await self._send_segments(pcm_bytes, tts_sample_rate, tts_channels, segment_bytes)
         except Exception as exc:  # pragma: no cover
-            self._synthesizing = False
             self._speaking = False
             await self.ws.send_json({"error": f"voicevox synthesis failed: {exc}"})
 
@@ -243,45 +207,45 @@ class WsProxy:
         try:
             while True:
                 message = await self.ws.receive_bytes()
-                if len(message) < WS_HEADER_SIZE:
+                if len(message) < _WS_HEADER_SIZE:
                     await self.ws.close(code=1003, reason="header too short")
                     break
 
                 kind, msg_type, _reserved, _seq, payload_bytes = struct.unpack(
-                    WS_HEADER_FMT, message[:WS_HEADER_SIZE]
+                    _WS_HEADER_FMT, message[:_WS_HEADER_SIZE]
                 )
 
-                payload = message[WS_HEADER_SIZE:]
+                payload = message[_WS_HEADER_SIZE:]
                 if payload_bytes != len(payload):
                     await self.ws.close(code=1003, reason="payload length mismatch")
                     break
 
-                if kind == WS_KIND_PCM:
-                    if msg_type == WS_MSG_START:
+                if kind == _WS_KIND_PCM:
+                    if msg_type == _WS_MSG_START:
                         self._handle_start()
                         continue
 
-                    if msg_type == WS_MSG_DATA:
+                    if msg_type == _WS_MSG_DATA:
                         if not self._handle_data(payload_bytes, payload):
                             break
                         continue
 
-                    if msg_type == WS_MSG_END:
+                    if msg_type == _WS_MSG_END:
                         await self._handle_end(payload_bytes, payload)
                         continue
 
                     await self.ws.close(code=1003, reason="unknown PCM msg type")
                     break
 
-                if kind == WS_KIND_WAKEWORD_EVT:
+                if kind == _WS_KIND_WAKEWORD_EVT:
                     self._handle_wakeword_event(msg_type, payload)
                     continue
 
-                if kind == WS_KIND_STATE_EVT:
+                if kind == _WS_KIND_STATE_EVT:
                     self._handle_state_event(msg_type, payload)
                     continue
 
-                if kind == WS_KIND_SPEAK_DONE_EVT:
+                if kind == _WS_KIND_SPEAK_DONE_EVT:
                     self._handle_speak_done_event(msg_type, payload)
                     continue
 
@@ -292,13 +256,11 @@ class WsProxy:
         finally:
             self._closed = True
             self._speaking = False
-            self._synthesizing = False
 
     def _handle_start(self) -> None:
         logger.info("Received START")
         self._pcm_buffer = bytearray()
         self._streaming = True
-        self._listening = True
         self._message_error = None
 
     def _handle_data(self, payload_bytes: int, payload: bytes) -> bool:
@@ -306,7 +268,7 @@ class WsProxy:
         if not self._streaming:
             asyncio.create_task(self.ws.close(code=1003, reason="data received before start"))
             return False
-        if payload_bytes % (SAMPLE_WIDTH * CHANNELS) != 0:
+        if payload_bytes % (_SAMPLE_WIDTH * _CHANNELS) != 0:
             asyncio.create_task(self.ws.close(code=1003, reason="invalid pcm chunk length"))
             return False
         self._pcm_buffer.extend(payload)
@@ -319,29 +281,29 @@ class WsProxy:
         if not self._streaming:
             await self.ws.close(code=1003, reason="end received before start")
             return
-        if payload_bytes % (SAMPLE_WIDTH * CHANNELS) != 0:
+        if payload_bytes % (_SAMPLE_WIDTH * _CHANNELS) != 0:
             await self.ws.close(code=1003, reason="invalid pcm tail length")
             return
         self._pcm_buffer.extend(payload)
 
-        if len(self._pcm_buffer) == 0 or len(self._pcm_buffer) % (SAMPLE_WIDTH * CHANNELS) != 0:
+        if len(self._pcm_buffer) == 0 or len(self._pcm_buffer) % (_SAMPLE_WIDTH * _CHANNELS) != 0:
             await self.ws.close(code=1003, reason="invalid accumulated pcm length")
             return
 
         # Uplink audio has been fully received: tell firmware to enter Thinking state.
-        await self._send_state_command(STATE_THINKING)
+        await self._send_state_command(_STATE_THINKING)
 
-        frames = len(self._pcm_buffer) // (SAMPLE_WIDTH * CHANNELS)
-        duration_seconds = frames / float(SAMPLE_RATE_HZ)
+        frames = len(self._pcm_buffer) // (_SAMPLE_WIDTH * _CHANNELS)
+        duration_seconds = frames / float(_SAMPLE_RATE_HZ)
 
         filepath, filename = self._save_wav(bytes(self._pcm_buffer))
 
         await self.ws.send_json(
             {
                 "text": f"Saved as {filename}",
-                "sample_rate": SAMPLE_RATE_HZ,
+                "sample_rate": _SAMPLE_RATE_HZ,
                 "frames": frames,
-                "channels": CHANNELS,
+                "channels": _CHANNELS,
                 "duration_seconds": round(duration_seconds, 3),
                 "path": f"recordings/{filename}",
             }
@@ -350,7 +312,6 @@ class WsProxy:
         transcript = await self._transcribe_async(bytes(self._pcm_buffer))
 
         self._streaming = False
-        self._listening = False
         self._pcm_buffer = bytearray()
 
         if transcript.strip() == "":
@@ -361,7 +322,7 @@ class WsProxy:
         self._message_ready.set()
 
     def _handle_wakeword_event(self, msg_type: int, payload: bytes) -> None:
-        if msg_type != WS_MSG_DATA:
+        if msg_type != _WS_MSG_DATA:
             return
         if len(payload) < 1:
             return
@@ -369,17 +330,14 @@ class WsProxy:
         self._wakeword_event.set()
 
     def _handle_state_event(self, msg_type: int, payload: bytes) -> None:
-        if msg_type != WS_MSG_DATA:
+        if msg_type != _WS_MSG_DATA:
             return
         if len(payload) < 1:
             return
-        state_id = int(payload[0])
-        self._firmware_state = state_id
-        self._firmware_state_counter += 1
-        logger.info("Received firmware state=%d", state_id)
+        logger.info("Received firmware state=%d", int(payload[0]))
 
     def _handle_speak_done_event(self, msg_type: int, payload: bytes) -> None:
-        if msg_type != WS_MSG_DATA:
+        if msg_type != _WS_MSG_DATA:
             return
         if len(payload) < 1:
             return
@@ -390,9 +348,9 @@ class WsProxy:
     async def _send_state_command(self, state_id: int) -> None:
         payload = struct.pack("<B", state_id)
         hdr = struct.pack(
-            WS_HEADER_FMT,
-            WS_KIND_STATE_CMD,
-            WS_MSG_DATA,
+            _WS_HEADER_FMT,
+            _WS_KIND_STATE_CMD,
+            _WS_MSG_DATA,
             0,
             self._down_seq,
             len(payload),
@@ -406,9 +364,9 @@ class WsProxy:
         filepath = self.recordings_dir / filename
 
         with wave.open(str(filepath), "wb") as wav_fp:
-            wav_fp.setnchannels(CHANNELS)
-            wav_fp.setsampwidth(SAMPLE_WIDTH)
-            wav_fp.setframerate(SAMPLE_RATE_HZ)
+            wav_fp.setnchannels(_CHANNELS)
+            wav_fp.setsampwidth(_SAMPLE_WIDTH)
+            wav_fp.setframerate(_SAMPLE_RATE_HZ)
             wav_fp.writeframes(pcm_bytes)
 
         logger.info("Saved WAV: %s", filename)
@@ -422,7 +380,7 @@ class WsProxy:
         audio = speech.RecognitionAudio(content=pcm_bytes)
         config = speech.RecognitionConfig(
             encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            sample_rate_hertz=SAMPLE_RATE_HZ,
+            sample_rate_hertz=_SAMPLE_RATE_HZ,
             language_code="ja-JP",
         )
         response = self.speech_client.recognize(config=config, audio=audio)
@@ -456,9 +414,9 @@ class WsProxy:
             if idx == 0:
                 target_ms = 0
             elif idx == 1:
-                target_ms = DOWN_SEGMENT_STAGGER_MILLIS
+                target_ms = _DOWN_SEGMENT_STAGGER_MILLIS
             else:
-                target_ms = DOWN_SEGMENT_STAGGER_MILLIS + (idx - 1) * DOWN_SEGMENT_MILLIS
+                target_ms = _DOWN_SEGMENT_STAGGER_MILLIS + (idx - 1) * _DOWN_SEGMENT_MILLIS
 
             target_time = base_time + target_ms / 1000
             now = loop.time()
@@ -471,9 +429,9 @@ class WsProxy:
         logger.info("Sending segment bytes=%d", len(segment_pcm))
         start_payload = struct.pack("<IH", tts_sample_rate, tts_channels)
         start_hdr = struct.pack(
-            WS_HEADER_FMT,
-            WS_KIND_WAV,
-            WS_MSG_START,
+            _WS_HEADER_FMT,
+            _WS_KIND_WAV,
+            _WS_MSG_START,
             0,
             self._down_seq,
             len(start_payload),
@@ -484,11 +442,11 @@ class WsProxy:
         seg_offset = 0
         seg_total = len(segment_pcm)
         while seg_offset < seg_total:
-            chunk = segment_pcm[seg_offset : seg_offset + DOWN_WAV_CHUNK]
+            chunk = segment_pcm[seg_offset : seg_offset + _DOWN_WAV_CHUNK]
             data_hdr = struct.pack(
-                WS_HEADER_FMT,
-                WS_KIND_WAV,
-                WS_MSG_DATA,
+                _WS_HEADER_FMT,
+                _WS_KIND_WAV,
+                _WS_MSG_DATA,
                 0,
                 self._down_seq,
                 len(chunk),
@@ -498,9 +456,9 @@ class WsProxy:
             seg_offset += len(chunk)
 
         end_hdr = struct.pack(
-            WS_HEADER_FMT,
-            WS_KIND_WAV,
-            WS_MSG_END,
+            _WS_HEADER_FMT,
+            _WS_KIND_WAV,
+            _WS_MSG_END,
             0,
             self._down_seq,
             0,
@@ -508,33 +466,5 @@ class WsProxy:
         await self.ws.send_bytes(end_hdr)
         self._down_seq += 1
 
-__all__ = [
-    "WsProxy",
-    "WS_HEADER_FMT",
-    "WS_HEADER_SIZE",
-    "WS_KIND_PCM",
-    "WS_KIND_WAV",
-    "WS_KIND_STATE_CMD",
-    "WS_KIND_WAKEWORD_EVT",
-    "WS_KIND_STATE_EVT",
-    "WS_KIND_SPEAK_DONE_EVT",
-    "WS_MSG_START",
-    "WS_MSG_DATA",
-    "WS_MSG_END",
-    "STATE_IDLE",
-    "STATE_LISTENING",
-    "STATE_THINKING",
-    "STATE_SPEAKING",
-    "SAMPLE_RATE_HZ",
-    "CHANNELS",
-    "SAMPLE_WIDTH",
-    "DOWN_WAV_CHUNK",
-    "DOWN_SEGMENT_MILLIS",
-    "DOWN_SEGMENT_STAGGER_MILLIS",
-    "LISTEN_AUDIO_TIMEOUT_SECONDS",
-    "TimeoutError",
-    "EmptyTranscriptError",
-    "create_voicevox_client",
-    "mulaw_to_pcm16",
-    "logger",
-]
+
+__all__ = ["WsProxy", "TimeoutError", "EmptyTranscriptError", "create_voicevox_client"]
