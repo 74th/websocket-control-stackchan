@@ -35,21 +35,18 @@ async def talk_session(proxy: WsProxy):
     global chat
 
     while True:
-        # 音声の受信
         text = await proxy.listen()
         if not text:
             return
         logger.info("Human: %s", text)
 
-        # AI応答の取得(Geminiの例)
-        resp = await asyncio.to_thread(chat.send_message, text)
+        # AI応答の取得
+        resp = await chat.send_message(text)
 
         # 発話
         logger.info("AI: %s", resp.text)
         if resp.text:
             await proxy.speak(resp.text)
-        else:
-            await proxy.speak("すみません、うまく答えられませんでした。")
 ```
 
 
