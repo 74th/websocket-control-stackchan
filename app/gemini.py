@@ -19,19 +19,16 @@ client = genai.Client(vertexai=True).aio
 
 @app.setup
 async def setup(proxy: WsProxy):
-    global chat
     logger.info("WebSocket connected")
 
+@app.talk_session
+async def talk_session(proxy: WsProxy):
     chat = client.chats.create(
         model="gemini-3-flash-preview",
         config=types.GenerateContentConfig(
             system_instruction="あなたは親切な音声アシスタントです。音声で返答するため、マークダウンは記述せず、簡潔に答えてください。だいたい3文程度で答えてください。",
         ),
     )
-
-@app.talk_session
-async def talk_session(proxy: WsProxy):
-    global chat
 
     while True:
         text = await proxy.listen()
