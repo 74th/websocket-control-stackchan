@@ -30,9 +30,22 @@ async def talk_session(proxy: WsProxy):
 [app/gemini.py](./app/gemini.py)
 
 ```py
+app = StackChanApp()
+
+client = genai.Client(vertexai=True).aio
+
+@app.setup
+async def setup(proxy: WsProxy):
+    logger.info("WebSocket connected")
+
 @app.talk_session
 async def talk_session(proxy: WsProxy):
-    global chat
+    chat = client.chats.create(
+        model="gemini-3-flash-preview",
+        config=types.GenerateContentConfig(
+            system_instruction="あなたは親切な音声アシスタントです。音声で返答するため、マークダウンは記述せず、簡潔に答えてください。だいたい3文程度で答えてください。",
+        ),
+    )
 
     while True:
         text = await proxy.listen()
