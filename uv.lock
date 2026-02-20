@@ -1032,17 +1032,16 @@ wheels = [
 [[package]]
 name = "websocket-control-stackchan-server"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "google-cloud-speech" },
-    { name = "google-genai" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "voicevox-client" },
 ]
 
 [package.dev-dependencies]
-sample-gemini = [
+example-gemini = [
     { name = "google-genai" },
 ]
 
@@ -1050,13 +1049,12 @@ sample-gemini = [
 requires-dist = [
     { name = "fastapi", extras = ["websockets"], specifier = ">=0.128.0" },
     { name = "google-cloud-speech", specifier = ">=2.35.0" },
-    { name = "google-genai", specifier = ">=1.59.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.40.0" },
     { name = "voicevox-client", specifier = ">=1.1.0" },
 ]
 
 [package.metadata.requires-dev]
-sample-gemini = [{ name = "google-genai", specifier = ">=1.59.0" }]
+example-gemini = [{ name = "google-genai", specifier = ">=1.59.0" }]
 
 [[package]]
 name = "websockets"

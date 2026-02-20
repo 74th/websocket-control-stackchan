@@ -79,9 +79,9 @@
   - `get_message_async()` でアプリ層へ認識結果を渡す。
   - `start_talking(text)` で VOICEVOX（`http://localhost:50021`, speaker=29）合成し、`AudioWav` として分割送信。
 
-## アプリ層（`app/`）
-- `app/echo.py`: 認識結果をそのまま VOICEVOX で復唱。
-- `app/gemini.py`: 認識結果を Gemini チャットに渡し、応答文を VOICEVOX で発話。
+## アプリ層（`example_apps/`）
+- `example_apps/echo.py`: 認識結果をそのまま VOICEVOX で復唱。
+- `example_apps/gemini.py`: 認識結果を Gemini チャットに渡し、応答文を VOICEVOX で発話。
   - いずれも `@app.talk_session` / `proxy.listen()` / `proxy.speak()` を使用。
 
 ## 依存・周辺
