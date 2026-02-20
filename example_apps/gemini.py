@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 from logging import StreamHandler, getLogger
+
+from google import genai
+from google.genai import types
 
 from stackchan_server.app import StackChanApp
 from stackchan_server.ws_proxy import WsProxy
-from google import genai
-from google.genai import types
 
 logger = getLogger(__name__)
 logger.addHandler(StreamHandler())

@@ -1,0 +1,35 @@
+name: PR Lint and Type Check
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/pr-lint-typecheck.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "stackchan_server/**"
+      - "example_apps/**"
+
+jobs:
+  lint-and-typecheck:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --group dev --group example-gemini --frozen
+
+      - name: Ruff
+        run: uv run ruff check stackchan_server example_apps
+
+      - name: ty
+        run: uv run ty check stackchan_server example_apps
