@@ -14,7 +14,7 @@ StackChanをフロントにし、メインのロジック処理をPC上のPython
 
 ## サンプルコード
 
-サンプルアプリケーション [app/](./app/)
+サンプルアプリケーション [example_apps/](./example_apps/)
 
 以下の関数で、wake word を起点に対話セッションを実装できます。
 
@@ -27,7 +27,7 @@ async def talk_session(proxy: WsProxy):
 
 ### Geminiの応答
 
-[app/gemini.py](./app/gemini.py)
+[example_apps/gemini.py](./example_apps/gemini.py)
 
 ```py
 app = StackChanApp()
@@ -73,7 +73,7 @@ async def talk_session(proxy: WsProxy):
 
 - ファームウェア [firmware/](./firmware/)
 - Pythonサーバのライブラリ [stackchan_server/](./stackchan_server/)
-- サンプルアプリケーション [app/](./app/)
+- サンプルアプリケーション [example_apps/](./example_apps/)
 
 ## 必要なもの
 
