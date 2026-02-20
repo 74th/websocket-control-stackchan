@@ -9,16 +9,24 @@ description = "A WebSocket control interface for StackChan AI agent"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "fastapi[websockets]>=0.128.0",
+    "fastapi>=0.128.0",
     "google-cloud-speech>=2.35.0",
     "uvicorn[standard]>=0.40.0",
     "voicevox-client>=1.1.0",
 ]
 
 [dependency-groups]
+dev = [
+    "ruff>=0.15.2",
+    "ty>=0.0.17",
+]
 example-gemini = [
     "google-genai>=1.59.0",
 ]
+
+[tool.ruff]
+target-version = "py313"
+
 
 [tool.hatch.build.targets.wheel]
 packages = ["stackchan_server"]

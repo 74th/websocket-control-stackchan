@@ -6,7 +6,7 @@ import os
 import struct
 import wave
 from contextlib import suppress
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import IntEnum
 from logging import getLogger
 from pathlib import Path
@@ -380,7 +380,7 @@ class WsProxy:
         self._down_seq += 1
 
     def _save_wav(self, pcm_bytes: bytes) -> tuple[Path, str]:
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S_%f")
         filename = f"rec_ws_{timestamp}.wav"
         filepath = self.recordings_dir / filename
 
