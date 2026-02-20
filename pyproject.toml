@@ -11,13 +11,12 @@ requires-python = ">=3.13"
 dependencies = [
     "fastapi[websockets]>=0.128.0",
     "google-cloud-speech>=2.35.0",
-    "google-genai>=1.59.0",
     "uvicorn[standard]>=0.40.0",
     "voicevox-client>=1.1.0",
 ]
 
 [dependency-groups]
-sample-gemini = [
+example-gemini = [
     "google-genai>=1.59.0",
 ]
 

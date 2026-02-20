@@ -27,6 +27,10 @@ async def talk_session(proxy: WsProxy):
 
 ### Geminiの応答
 
+```
+uv sync --group example-gemini
+```
+
 [example_apps/gemini.py](./example_apps/gemini.py)
 
 ```py
