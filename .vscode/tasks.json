@@ -14,9 +14,6 @@
       "presentation": {
         "reveal": "silent"
       },
-      "options": {
-        "cwd": "${workspaceFolder}/server"
-      },
       "group": "none"
     }
   ]

@@ -33,4 +33,4 @@ async def talk_session(proxy: WsProxy):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("app.echo:app.fastapi", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("example_apps.echo:app.fastapi", host="0.0.0.0", port=8000, reload=True)
