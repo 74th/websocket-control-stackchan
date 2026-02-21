@@ -23,6 +23,11 @@ dev = [
 example-gemini = [
     "google-genai>=1.59.0",
 ]
+example-deepagents = [
+    "deepagents>=0.4.1",
+    "langchain-google-vertexai>=3.2.2",
+    "pydantic>=2.12.5",
+]
 
 [tool.ruff]
 target-version = "py313"
