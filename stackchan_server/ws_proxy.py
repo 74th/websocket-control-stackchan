@@ -20,7 +20,6 @@ logger = getLogger(__name__)
 
 _BASE_DIR = Path(__file__).resolve().parent
 _RECORDINGS_DIR = _BASE_DIR / "recordings"
-_RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 _WS_HEADER_FMT = "<BBBHH"  # kind, msg_type, reserved, seq, payload_bytes
 _WS_HEADER_SIZE = struct.calcsize(_WS_HEADER_FMT)
@@ -67,7 +66,8 @@ class _WsMsgType(IntEnum):
 
 
 def create_voicevox_client() -> VVClient:
-    return VVClient(base_uri="http://localhost:50021")
+    voicevox_url = os.getenv("STACKCHAN_VOICEVOX_URL", "http://localhost:50021")
+    return VVClient(base_uri=voicevox_url)
 
 
 class WsProxy:
@@ -77,6 +77,7 @@ class WsProxy:
         self.recordings_dir = _RECORDINGS_DIR
         self._debug_recording = _DEBUG_RECORDING_ENABLED
         if self._debug_recording:
+            _RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
             self.recordings_dir.mkdir(parents=True, exist_ok=True)
 
         self._pcm_buffer = bytearray()
