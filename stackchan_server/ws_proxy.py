@@ -67,7 +67,8 @@ class _WsMsgType(IntEnum):
 
 
 def create_voicevox_client() -> VVClient:
-    return VVClient(base_uri="http://localhost:50021")
+    voicevox_url = os.getenv("STACKCHAN_VOICEVOX_URL", "http://localhost:50021")
+    return VVClient(base_uri=voicevox_url)
 
 
 class WsProxy:
