@@ -5,16 +5,17 @@ from logging import getLogger
 from typing import Awaitable, Callable, Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from google.cloud import speech
 
+from .speech_recognition import create_speech_recognizer
+from .types import SpeechRecognizer
 from .ws_proxy import WsProxy
 
 logger = getLogger(__name__)
 
 
 class StackChanApp:
-    def __init__(self) -> None:
-        self.speech_client = speech.SpeechClient()
+    def __init__(self, speech_recognizer: SpeechRecognizer | None = None) -> None:
+        self.speech_recognizer = speech_recognizer or create_speech_recognizer()
         self.fastapi = FastAPI(title="StackChan WebSocket Server")
         self._setup_fn: Optional[Callable[[WsProxy], Awaitable[None]]] = None
         self._talk_session_fn: Optional[Callable[[WsProxy], Awaitable[None]]] = None
@@ -37,7 +38,7 @@ class StackChanApp:
 
     async def _handle_ws(self, websocket: WebSocket) -> None:
         await websocket.accept()
-        proxy = WsProxy(websocket, speech_client=self.speech_client)
+        proxy = WsProxy(websocket, speech_recognizer=self.speech_recognizer)
         await proxy.start()
         try:
             if self._setup_fn:

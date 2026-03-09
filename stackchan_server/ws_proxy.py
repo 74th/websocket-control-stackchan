@@ -13,8 +13,9 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import WebSocket, WebSocketDisconnect
-from google.cloud import speech
 from vvclient import Client as VVClient
+
+from .types import SpeechRecognizer
 
 logger = getLogger(__name__)
 
@@ -71,9 +72,9 @@ def create_voicevox_client() -> VVClient:
 
 
 class WsProxy:
-    def __init__(self, websocket: WebSocket, speech_client: speech.SpeechClient):
+    def __init__(self, websocket: WebSocket, speech_recognizer: SpeechRecognizer):
         self.ws = websocket
-        self.speech_client = speech_client
+        self.speech_recognizer = speech_recognizer
         self.recordings_dir = _RECORDINGS_DIR
         self._debug_recording = _DEBUG_RECORDING_ENABLED
         if self._debug_recording:
@@ -399,18 +400,15 @@ class WsProxy:
         return await loop.run_in_executor(None, lambda: self._transcribe(pcm_bytes))
 
     def _transcribe(self, pcm_bytes: bytes) -> str:
-        audio = speech.RecognitionAudio(content=pcm_bytes)
-        config = speech.RecognitionConfig(
-            encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            sample_rate_hertz=_SAMPLE_RATE_HZ,
+        transcript = self.speech_recognizer.transcribe(
+            pcm_bytes,
+            sample_rate_hz=_SAMPLE_RATE_HZ,
+            channels=_CHANNELS,
+            sample_width=_SAMPLE_WIDTH,
             language_code="ja-JP",
         )
-        response = self.speech_client.recognize(config=config, audio=audio)
-
-        transcript = ""
-        for result in response.results:
-            logger.info("Transcript: %s", result.alternatives[0].transcript)
-            transcript += result.alternatives[0].transcript
+        if transcript:
+            logger.info("Transcript: %s", transcript)
         return transcript
 
     def _extract_pcm(self, wav_bytes: bytes) -> tuple[bytes, int, int, int]:
