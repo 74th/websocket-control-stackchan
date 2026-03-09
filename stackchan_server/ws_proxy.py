@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import io
 import os
 import struct
-import wave
 from contextlib import suppress
 from enum import IntEnum
 from logging import getLogger
@@ -12,9 +10,9 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import WebSocket, WebSocketDisconnect
-from vvclient import Client as VVClient
 
 from .listen import EmptyTranscriptError, ListenHandler, TimeoutError
+from .speak import SpeakHandler, create_voicevox_client
 from .types import SpeechRecognizer
 
 logger = getLogger(__name__)
@@ -57,12 +55,6 @@ class _WsMsgType(IntEnum):
     DATA = 2
     END = 3
 
-
-def create_voicevox_client() -> VVClient:
-    voicevox_url = os.getenv("STACKCHAN_VOICEVOX_URL", "http://localhost:50021")
-    return VVClient(base_uri=voicevox_url)
-
-
 class WsProxy:
     def __init__(self, websocket: WebSocket, speech_recognizer: SpeechRecognizer):
         self.ws = websocket
@@ -82,12 +74,21 @@ class WsProxy:
             sample_width=_SAMPLE_WIDTH,
             listen_audio_timeout_seconds=_LISTEN_AUDIO_TIMEOUT_SECONDS,
         )
+        self._speaker = SpeakHandler(
+            websocket=self.ws,
+            ws_header_fmt=_WS_HEADER_FMT,
+            wav_kind=_WsKind.WAV.value,
+            start_msg_type=_WsMsgType.START.value,
+            data_msg_type=_WsMsgType.DATA.value,
+            end_msg_type=_WsMsgType.END.value,
+            down_wav_chunk=_DOWN_WAV_CHUNK,
+            down_segment_millis=_DOWN_SEGMENT_MILLIS,
+            down_segment_stagger_millis=_DOWN_SEGMENT_STAGGER_MILLIS,
+            sample_width=_SAMPLE_WIDTH,
+        )
 
         self._receiving_task: Optional[asyncio.Task] = None
         self._closed = False
-
-        self._speaking = False
-        self._speak_finished_counter = 0
 
         self._down_seq = 0
 
@@ -117,33 +118,13 @@ class WsProxy:
         )
 
     async def speak(self, text: str) -> None:
-        start_counter = self._speak_finished_counter
-        await self._start_talking_stream(text)
-        if not self._speaking:
-            return
-        await self._wait_for_speaking_finished(
-            min_counter=start_counter + 1,
-            timeout_seconds=120.0,
+        await self._speaker.speak(
+            text,
+            next_seq=self._next_down_seq,
+            send_state_command=self.send_state_command,
+            idle_state=FirmwareState.IDLE,
+            is_closed=lambda: self._closed,
         )
-        if not self._closed:
-            await self.send_state_command(FirmwareState.IDLE)
-
-    async def _wait_for_speaking_finished(
-        self,
-        *,
-        min_counter: int = 0,
-        timeout_seconds: Optional[float] = None,
-    ) -> None:
-        loop = asyncio.get_running_loop()
-        deadline = (loop.time() + timeout_seconds) if timeout_seconds else None
-        while True:
-            if self._speak_finished_counter >= min_counter:
-                return
-            if self._closed:
-                raise WebSocketDisconnect()
-            if deadline and loop.time() >= deadline:
-                raise TimeoutError("Timed out waiting for speaking finished event")
-            await asyncio.sleep(0.05)
 
     async def send_state_command(self, state_id: int | FirmwareState) -> None:
         await self._send_state_command(state_id)
@@ -165,36 +146,6 @@ class WsProxy:
 
     async def start_talking(self, text: str) -> None:
         await self.speak(text)
-
-    async def _start_talking_stream(self, text: str) -> None:
-        self._speaking = True
-        try:
-            async with create_voicevox_client() as client:
-                audio_query = await client.create_audio_query(text, speaker=29)
-                wav_bytes = await audio_query.synthesis(speaker=29)
-
-            pcm_bytes, tts_sample_rate, tts_channels, tts_sample_width = self._extract_pcm(wav_bytes)
-            if len(pcm_bytes) == 0:
-                self._speaking = False
-                return
-
-            if tts_sample_width != _SAMPLE_WIDTH:
-                await self.ws.send_json({"error": f"unsupported sample width {tts_sample_width}"})
-                self._speaking = False
-                return
-
-            bytes_per_second = tts_sample_rate * tts_channels * tts_sample_width
-            segment_bytes = int(bytes_per_second * (_DOWN_SEGMENT_MILLIS / 1000))
-
-            if segment_bytes <= 0:
-                await self.ws.send_json({"error": "invalid segment size computed"})
-                self._speaking = False
-                return
-
-            await self._send_segments(pcm_bytes, tts_sample_rate, tts_channels, segment_bytes)
-        except Exception as exc:  # pragma: no cover
-            self._speaking = False
-            await self.ws.send_json({"error": f"voicevox synthesis failed: {exc}"})
 
     async def _receive_loop(self) -> None:
         try:
@@ -255,7 +206,6 @@ class WsProxy:
             pass
         finally:
             self._closed = True
-            self._speaking = False
 
     def _handle_wakeword_event(self, msg_type: int, payload: bytes) -> None:
         if msg_type != _WsMsgType.DATA:
@@ -282,9 +232,7 @@ class WsProxy:
             return
         if len(payload) < 1:
             return
-        self._speak_finished_counter += 1
-        self._speaking = False
-        logger.info("Received speak done event")
+        self._speaker.handle_speak_done_event()
 
     async def _send_state_command(self, state_id: int | FirmwareState) -> None:
         payload = struct.pack("<B", int(state_id))
@@ -299,80 +247,10 @@ class WsProxy:
         await self.ws.send_bytes(hdr + payload)
         self._down_seq += 1
 
-    def _extract_pcm(self, wav_bytes: bytes) -> tuple[bytes, int, int, int]:
-        with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
-            pcm_bytes = wf.readframes(wf.getnframes())
-            tts_sample_rate = wf.getframerate()
-            tts_channels = wf.getnchannels()
-            tts_sample_width = wf.getsampwidth()
-        return pcm_bytes, tts_sample_rate, tts_channels, tts_sample_width
-
-    async def _send_segments(self, pcm_bytes: bytes, tts_sample_rate: int, tts_channels: int, segment_bytes: int) -> None:
-        segments: list[bytes] = []
-        offset = 0
-        total = len(pcm_bytes)
-        while offset < total:
-            segments.append(pcm_bytes[offset : offset + segment_bytes])
-            offset += segment_bytes
-
-        loop = asyncio.get_running_loop()
-        base_time = loop.time()
-
-        for idx, segment in enumerate(segments):
-            if idx == 0:
-                target_ms = 0
-            elif idx == 1:
-                target_ms = _DOWN_SEGMENT_STAGGER_MILLIS
-            else:
-                target_ms = _DOWN_SEGMENT_STAGGER_MILLIS + (idx - 1) * _DOWN_SEGMENT_MILLIS
-
-            target_time = base_time + target_ms / 1000
-            now = loop.time()
-            if target_time > now:
-                await asyncio.sleep(target_time - now)
-
-            await self._send_segment(segment, tts_sample_rate, tts_channels)
-
-    async def _send_segment(self, segment_pcm: bytes, tts_sample_rate: int, tts_channels: int) -> None:
-        logger.info("Sending segment bytes=%d", len(segment_pcm))
-        start_payload = struct.pack("<IH", tts_sample_rate, tts_channels)
-        start_hdr = struct.pack(
-            _WS_HEADER_FMT,
-            _WsKind.WAV.value,
-            _WsMsgType.START.value,
-            0,
-            self._down_seq,
-            len(start_payload),
-        )
-        await self.ws.send_bytes(start_hdr + start_payload)
+    def _next_down_seq(self) -> int:
+        seq = self._down_seq
         self._down_seq += 1
-
-        seg_offset = 0
-        seg_total = len(segment_pcm)
-        while seg_offset < seg_total:
-            chunk = segment_pcm[seg_offset : seg_offset + _DOWN_WAV_CHUNK]
-            data_hdr = struct.pack(
-                _WS_HEADER_FMT,
-                _WsKind.WAV.value,
-                _WsMsgType.DATA.value,
-                0,
-                self._down_seq,
-                len(chunk),
-            )
-            await self.ws.send_bytes(data_hdr + chunk)
-            self._down_seq += 1
-            seg_offset += len(chunk)
-
-        end_hdr = struct.pack(
-            _WS_HEADER_FMT,
-            _WsKind.WAV.value,
-            _WsMsgType.END.value,
-            0,
-            self._down_seq,
-            0,
-        )
-        await self.ws.send_bytes(end_hdr)
-        self._down_seq += 1
+        return seq
 
 
 __all__ = ["WsProxy", "FirmwareState", "TimeoutError", "EmptyTranscriptError", "create_voicevox_client"]
