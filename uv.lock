@@ -1411,6 +1411,7 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "google-cloud-speech" },
+    { name = "google-genai" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "voicevox-client" },
 ]
@@ -1423,14 +1424,12 @@ dev = [
 example-claude-agent-sdk = [
     { name = "claude-agent-sdk" },
 ]
-example-gemini = [
-    { name = "google-genai" },
-]
 
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.128.0" },
     { name = "google-cloud-speech", specifier = ">=2.35.0" },
+    { name = "google-genai", specifier = ">=1.59.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.40.0" },
     { name = "voicevox-client", specifier = ">=1.1.0" },
 ]
@@ -1441,7 +1440,7 @@ dev = [
     { name = "ty", specifier = ">=0.0.17" },
 ]
 example-claude-agent-sdk = [{ name = "claude-agent-sdk", specifier = ">=0.1.39" }]
-example-gemini = [{ name = "google-genai", specifier = ">=1.59.0" }]
+example-gemini = []
 
 [[package]]
 name = "websockets"

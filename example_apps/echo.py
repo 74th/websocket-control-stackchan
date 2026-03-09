@@ -1,14 +1,18 @@
 from __future__ import annotations
 
-from logging import StreamHandler, getLogger
+import logging
+import os
+from logging import getLogger
 
 from stackchan_server.app import StackChanApp
 from stackchan_server.ws_proxy import EmptyTranscriptError, WsProxy
 
-
 logger = getLogger(__name__)
-logger.addHandler(StreamHandler())
-logger.setLevel("DEBUG")
+logging.basicConfig(
+    level=os.getenv("STACKCHAN_LOG_LEVEL", "INFO"),
+    format="%(asctime)s.%(msecs)03d %(levelname)s:%(name)s:%(message)s",
+    datefmt="%H:%M:%S",
+)
 
 
 app = StackChanApp()

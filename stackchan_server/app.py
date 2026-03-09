@@ -7,15 +7,21 @@ from typing import Awaitable, Callable, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from .speech_recognition import create_speech_recognizer
-from .types import SpeechRecognizer
+from .speech_synthesis import create_speech_synthesizer
+from .types import SpeechRecognizer, SpeechSynthesizer
 from .ws_proxy import WsProxy
 
 logger = getLogger(__name__)
 
 
 class StackChanApp:
-    def __init__(self, speech_recognizer: SpeechRecognizer | None = None) -> None:
+    def __init__(
+        self,
+        speech_recognizer: SpeechRecognizer | None = None,
+        speech_synthesizer: SpeechSynthesizer | None = None,
+    ) -> None:
         self.speech_recognizer = speech_recognizer or create_speech_recognizer()
+        self.speech_synthesizer = speech_synthesizer or create_speech_synthesizer()
         self.fastapi = FastAPI(title="StackChan WebSocket Server")
         self._setup_fn: Optional[Callable[[WsProxy], Awaitable[None]]] = None
         self._talk_session_fn: Optional[Callable[[WsProxy], Awaitable[None]]] = None
@@ -38,7 +44,11 @@ class StackChanApp:
 
     async def _handle_ws(self, websocket: WebSocket) -> None:
         await websocket.accept()
-        proxy = WsProxy(websocket, speech_recognizer=self.speech_recognizer)
+        proxy = WsProxy(
+            websocket,
+            speech_recognizer=self.speech_recognizer,
+            speech_synthesizer=self.speech_synthesizer,
+        )
         await proxy.start()
         try:
             if self._setup_fn:
