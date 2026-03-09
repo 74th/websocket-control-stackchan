@@ -3,6 +3,7 @@ from __future__ import annotations
 from logging import StreamHandler, getLogger
 
 from stackchan_server.app import StackChanApp
+from stackchan_server.speech_synthesis import GoogleCloudTextToSpeech
 from stackchan_server.ws_proxy import EmptyTranscriptError, WsProxy
 
 
@@ -11,7 +12,7 @@ logger.addHandler(StreamHandler())
 logger.setLevel("DEBUG")
 
 
-app = StackChanApp()
+app = StackChanApp(speech_synthesizer=GoogleCloudTextToSpeech())
 
 
 @app.setup
