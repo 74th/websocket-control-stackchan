@@ -5,7 +5,7 @@ from typing import Protocol, runtime_checkable
 
 @runtime_checkable
 class SpeechRecognizer(Protocol):
-    def transcribe(
+    async def transcribe(
         self,
         pcm_bytes: bytes,
         *,
@@ -18,16 +18,16 @@ class SpeechRecognizer(Protocol):
 
 @runtime_checkable
 class StreamingSpeechSession(Protocol):
-    def push_audio(self, pcm_bytes: bytes) -> None: ...
+    async def push_audio(self, pcm_bytes: bytes) -> None: ...
 
-    def finish(self) -> str: ...
+    async def finish(self) -> str: ...
 
-    def abort(self) -> None: ...
+    async def abort(self) -> None: ...
 
 
 @runtime_checkable
 class StreamingSpeechRecognizer(SpeechRecognizer, Protocol):
-    def start_stream(
+    async def start_stream(
         self,
         *,
         sample_rate_hz: int,

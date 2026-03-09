@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import queue
-import threading
+import asyncio
 from logging import getLogger
 
 from google.cloud import speech
 
-from ..types import SpeechRecognizer, StreamingSpeechRecognizer, StreamingSpeechSession
+from ..types import StreamingSpeechRecognizer, StreamingSpeechSession
 
 logger = getLogger(__name__)
 _STREAM_END = object()
@@ -15,7 +14,7 @@ _STREAM_END = object()
 class _GoogleCloudStreamingSession(StreamingSpeechSession):
     def __init__(
         self,
-        client: speech.SpeechClient,
+        client: speech.SpeechAsyncClient,
         *,
         sample_rate_hz: int,
         channels: int,
@@ -39,52 +38,54 @@ class _GoogleCloudStreamingSession(StreamingSpeechSession):
             interim_results=False,
             single_utterance=False,
         )
-        self._audio_queue: queue.Queue[bytes | object] = queue.Queue()
-        self._done = threading.Event()
+        self._audio_queue: asyncio.Queue[bytes | object] = asyncio.Queue()
+        self._done = asyncio.Event()
         self._closed = False
         self._error: Exception | None = None
         self._final_transcripts: list[str] = []
         self._latest_transcript = ""
-        self._thread = threading.Thread(target=self._run, name="gcloud-speech-stream", daemon=True)
-        self._thread.start()
+        self._task = asyncio.create_task(self._run())
 
-    def push_audio(self, pcm_bytes: bytes) -> None:
+    async def push_audio(self, pcm_bytes: bytes) -> None:
         if self._closed:
             raise RuntimeError("streaming speech session is already closed")
         if pcm_bytes:
-            self._audio_queue.put(bytes(pcm_bytes))
+            await self._audio_queue.put(bytes(pcm_bytes))
 
-    def finish(self) -> str:
-        self._close_stream()
-        self._thread.join(timeout=30.0)
-        if self._thread.is_alive():
-            raise TimeoutError("timed out waiting for streaming speech recognition to finish")
+    async def finish(self) -> str:
+        await self._close_stream()
+        await self._task
         if self._error is not None:
             raise self._error
         transcript = "".join(self._final_transcripts)
         return transcript or self._latest_transcript
 
-    def abort(self) -> None:
-        self._close_stream()
-        self._done.wait(timeout=1.0)
+    async def abort(self) -> None:
+        await self._close_stream()
+        self._task.cancel()
+        try:
+            await self._task
+        except asyncio.CancelledError:
+            pass
 
-    def _close_stream(self) -> None:
+    async def _close_stream(self) -> None:
         if self._closed:
             return
         self._closed = True
-        self._audio_queue.put(_STREAM_END)
+        await self._audio_queue.put(_STREAM_END)
 
-    def _request_iter(self):
+    async def _request_iter(self):
+        yield speech.StreamingRecognizeRequest(streaming_config=self._config)
         while True:
-            chunk = self._audio_queue.get()
+            chunk = await self._audio_queue.get()
             if chunk is _STREAM_END:
-                return
+                break
             yield speech.StreamingRecognizeRequest(audio_content=chunk)
 
-    def _run(self) -> None:
+    async def _run(self) -> None:
         try:
-            responses = self._client.streaming_recognize(self._config, self._request_iter())
-            for response in responses:
+            responses = await self._client.streaming_recognize(requests=self._request_iter())
+            async for response in responses:
                 for result in response.results:
                     if not result.alternatives:
                         continue
@@ -96,6 +97,8 @@ class _GoogleCloudStreamingSession(StreamingSpeechSession):
                     else:
                         logger.info("Streaming transcript(interim): %s", transcript)
                         self._latest_transcript = transcript
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             self._error = exc
         finally:
@@ -103,10 +106,10 @@ class _GoogleCloudStreamingSession(StreamingSpeechSession):
 
 
 class GoogleCloudSpeechToText(StreamingSpeechRecognizer):
-    def __init__(self, client: speech.SpeechClient | None = None) -> None:
-        self._client = client or speech.SpeechClient()
+    def __init__(self, client: speech.SpeechAsyncClient | None = None) -> None:
+        self._client = client or speech.SpeechAsyncClient()
 
-    def transcribe(
+    async def transcribe(
         self,
         pcm_bytes: bytes,
         *,
@@ -128,11 +131,11 @@ class GoogleCloudSpeechToText(StreamingSpeechRecognizer):
             sample_rate_hertz=sample_rate_hz,
             language_code=language_code,
         )
-        response = self._client.recognize(config=config, audio=audio)
+        response = await self._client.recognize(config=config, audio=audio)
 
         return "".join(result.alternatives[0].transcript for result in response.results)
 
-    def start_stream(
+    async def start_stream(
         self,
         *,
         sample_rate_hz: int,
