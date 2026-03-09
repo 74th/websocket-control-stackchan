@@ -1,4 +1,3 @@
-import os
 from google.cloud import speech
 
 sst_client = speech.SpeechClient()

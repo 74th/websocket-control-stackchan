@@ -5,9 +5,6 @@ import os
 from logging import getLogger
 
 from stackchan_server.app import StackChanApp
-from stackchan_server.speech_synthesis import (
-    VoiceVoxSpeechSynthesizer,
-)
 from stackchan_server.ws_proxy import EmptyTranscriptError, WsProxy
 
 logger = getLogger(__name__)
