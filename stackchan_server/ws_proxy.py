@@ -92,6 +92,8 @@ class WsProxy:
             down_segment_stagger_millis=_DOWN_SEGMENT_STAGGER_MILLIS,
             sample_width=_SAMPLE_WIDTH,
             speech_synthesizer=self.speech_synthesizer,
+            recordings_dir=self.recordings_dir,
+            debug_recording=self._debug_recording,
         )
 
         self._receiving_task: Optional[asyncio.Task] = None

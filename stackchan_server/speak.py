@@ -4,7 +4,9 @@ import asyncio
 import io
 import struct
 import wave
+from datetime import UTC, datetime
 from logging import getLogger
+from pathlib import Path
 from typing import Awaitable, Callable
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -30,6 +32,8 @@ class SpeakHandler:
         down_segment_stagger_millis: int,
         sample_width: int,
         speech_synthesizer: SpeechSynthesizer,
+        recordings_dir: Path,
+        debug_recording: bool,
     ) -> None:
         self.ws = websocket
         self.ws_header_fmt = ws_header_fmt
@@ -42,6 +46,8 @@ class SpeakHandler:
         self.down_segment_stagger_millis = down_segment_stagger_millis
         self.sample_width = sample_width
         self.speech_synthesizer = speech_synthesizer
+        self.recordings_dir = recordings_dir
+        self.debug_recording = debug_recording
 
         self._speaking = False
         self._speak_finished_counter = 0
@@ -98,8 +104,17 @@ class SpeakHandler:
         self._speaking = True
         try:
             wav_bytes = await self.speech_synthesizer.synthesize(text)
+            logger.info("Synthesized wav_bytes=%d text_chars=%d", len(wav_bytes), len(text))
             pcm_bytes, tts_sample_rate, tts_channels, tts_sample_width = self._extract_pcm(wav_bytes)
+            logger.info(
+                "Synthesized audio sample_rate=%d channels=%d sample_width=%d pcm_bytes=%d",
+                tts_sample_rate,
+                tts_channels,
+                tts_sample_width,
+                len(pcm_bytes),
+            )
             if len(pcm_bytes) == 0:
+                logger.warning("Synthesized audio is empty")
                 self._speaking = False
                 return
 
@@ -107,6 +122,11 @@ class SpeakHandler:
                 await self.ws.send_json({"error": f"unsupported sample width {tts_sample_width}"})
                 self._speaking = False
                 return
+
+            if self.debug_recording:
+                filepath, filename = self._save_wav(wav_bytes)
+                logger.info("Saved synthesized WAV: %s", filename)
+                await self.ws.send_json({"tts_debug_path": f"recordings/{filename}", "tts_debug_bytes": len(wav_bytes)})
 
             bytes_per_second = tts_sample_rate * tts_channels * tts_sample_width
             segment_bytes = int(bytes_per_second * (self.down_segment_millis / 1000))
@@ -125,7 +145,8 @@ class SpeakHandler:
             )
         except Exception as exc:  # pragma: no cover
             self._speaking = False
-            await self.ws.send_json({"error": f"voicevox synthesis failed: {exc}"})
+            logger.exception("Speech synthesis failed")
+            await self.ws.send_json({"error": f"speech synthesis failed: {exc}"})
 
     def _extract_pcm(self, wav_bytes: bytes) -> tuple[bytes, int, int, int]:
         with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
@@ -134,6 +155,13 @@ class SpeakHandler:
             tts_channels = wf.getnchannels()
             tts_sample_width = wf.getsampwidth()
         return pcm_bytes, tts_sample_rate, tts_channels, tts_sample_width
+
+    def _save_wav(self, wav_bytes: bytes) -> tuple[Path, str]:
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S_%f")
+        filename = f"tts_ws_{timestamp}.wav"
+        filepath = self.recordings_dir / filename
+        filepath.write_bytes(wav_bytes)
+        return filepath, filename
 
     async def _send_segments(
         self,
@@ -150,6 +178,7 @@ class SpeakHandler:
         while offset < total:
             segments.append(pcm_bytes[offset : offset + segment_bytes])
             offset += segment_bytes
+        logger.info("Prepared %d playback segments", len(segments))
 
         loop = asyncio.get_running_loop()
         base_time = loop.time()
