@@ -6,7 +6,6 @@ import os
 import struct
 import wave
 from contextlib import suppress
-from datetime import UTC, datetime
 from enum import IntEnum
 from logging import getLogger
 from pathlib import Path
@@ -15,7 +14,8 @@ from typing import Optional
 from fastapi import WebSocket, WebSocketDisconnect
 from vvclient import Client as VVClient
 
-from .types import SpeechRecognizer, StreamingSpeechRecognizer, StreamingSpeechSession
+from .listen import EmptyTranscriptError, ListenHandler, TimeoutError
+from .types import SpeechRecognizer
 
 logger = getLogger(__name__)
 
@@ -34,14 +34,6 @@ _DOWN_SEGMENT_MILLIS = 2000  # duration of a single START-DATA-END segment in mi
 _DOWN_SEGMENT_STAGGER_MILLIS = _DOWN_SEGMENT_MILLIS // 2  # half interval for the second segment start
 _LISTEN_AUDIO_TIMEOUT_SECONDS = 10.0
 _DEBUG_RECORDING_ENABLED = os.getenv("DEBUG_RECODING") == "1"
-
-
-class TimeoutError(Exception):
-    pass
-
-
-class EmptyTranscriptError(Exception):
-    pass
 
 
 class FirmwareState(IntEnum):
@@ -80,15 +72,16 @@ class WsProxy:
         if self._debug_recording:
             _RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
             self.recordings_dir.mkdir(parents=True, exist_ok=True)
-
-        self._pcm_buffer = bytearray()
-        self._streaming = False
-        self._pcm_data_counter = 0
-        self._message_ready = asyncio.Event()
-        self._message_error: Optional[Exception] = None
-        self._transcript: Optional[str] = None
         self._wakeword_event = asyncio.Event()
-        self._speech_stream: Optional[StreamingSpeechSession] = None
+        self._listener = ListenHandler(
+            speech_recognizer=self.speech_recognizer,
+            recordings_dir=self.recordings_dir,
+            debug_recording=self._debug_recording,
+            sample_rate_hz=_SAMPLE_RATE_HZ,
+            channels=_CHANNELS,
+            sample_width=_SAMPLE_WIDTH,
+            listen_audio_timeout_seconds=_LISTEN_AUDIO_TIMEOUT_SECONDS,
+        )
 
         self._receiving_task: Optional[asyncio.Task] = None
         self._closed = False
@@ -116,30 +109,12 @@ class WsProxy:
             await asyncio.sleep(0.05)
 
     async def listen(self) -> str:
-        await self.send_state_command(FirmwareState.LISTENING)
-        loop = asyncio.get_running_loop()
-        last_counter = self._pcm_data_counter
-        last_data_time = loop.time()
-        while True:
-            if self._message_error is not None:
-                err = self._message_error
-                self._message_error = None
-                raise err
-            if self._message_ready.is_set():
-                text = self._transcript or ""
-                self._transcript = None
-                self._message_ready.clear()
-                return text
-            if self._closed:
-                raise WebSocketDisconnect()
-            if self._pcm_data_counter != last_counter:
-                last_counter = self._pcm_data_counter
-                last_data_time = loop.time()
-            if (loop.time() - last_data_time) >= _LISTEN_AUDIO_TIMEOUT_SECONDS:
-                if not self._closed:
-                    await self.send_state_command(FirmwareState.IDLE)
-                raise TimeoutError("Timed out after audio data inactivity from firmware")
-            await asyncio.sleep(0.05)
+        return await self._listener.listen(
+            send_state_command=self.send_state_command,
+            is_closed=lambda: self._closed,
+            idle_state=FirmwareState.IDLE,
+            listening_state=FirmwareState.LISTENING,
+        )
 
     async def speak(self, text: str) -> None:
         start_counter = self._speak_finished_counter
@@ -186,7 +161,7 @@ class WsProxy:
             self._receiving_task.cancel()
             with suppress(asyncio.CancelledError):
                 await self._receiving_task
-        await self._abort_speech_stream()
+        await self._listener.close()
 
     async def start_talking(self, text: str) -> None:
         await self.speak(text)
@@ -240,17 +215,23 @@ class WsProxy:
 
                 if kind == _WsKind.PCM:
                     if msg_type == _WsMsgType.START:
-                        if not await self._handle_listening_start():
+                        if not await self._listener.handle_start(self.ws):
                             break
                         continue
 
                     if msg_type == _WsMsgType.DATA:
-                        if not await self._handle_listening_data(payload_bytes, payload):
+                        if not await self._listener.handle_data(self.ws, payload_bytes, payload):
                             break
                         continue
 
                     if msg_type == _WsMsgType.END:
-                        await self._handle_listening_end(payload_bytes, payload)
+                        await self._listener.handle_end(
+                            self.ws,
+                            payload_bytes=payload_bytes,
+                            payload=payload,
+                            send_state_command=self.send_state_command,
+                            thinking_state=FirmwareState.THINKING,
+                        )
                         continue
 
                     await self.ws.close(code=1003, reason="unknown PCM msg type")
@@ -275,103 +256,6 @@ class WsProxy:
         finally:
             self._closed = True
             self._speaking = False
-
-    async def _handle_listening_start(self) -> bool:
-        logger.info("Received START")
-        await self._abort_speech_stream()
-        self._pcm_buffer = bytearray()
-        self._streaming = True
-        self._message_error = None
-        if isinstance(self.speech_recognizer, StreamingSpeechRecognizer):
-            try:
-                self._speech_stream = await self.speech_recognizer.start_stream(
-                    sample_rate_hz=_SAMPLE_RATE_HZ,
-                    channels=_CHANNELS,
-                    sample_width=_SAMPLE_WIDTH,
-                    language_code="ja-JP",
-                )
-            except Exception:
-                asyncio.create_task(self.ws.close(code=1011, reason="speech streaming failed"))
-                return False
-        return True
-
-    async def _handle_listening_data(self, payload_bytes: int, payload: bytes) -> bool:
-        logger.info("Received DATA payload_bytes=%d", payload_bytes)
-        if not self._streaming:
-            await self._abort_speech_stream()
-            asyncio.create_task(self.ws.close(code=1003, reason="data received before start"))
-            return False
-        if payload_bytes % (_SAMPLE_WIDTH * _CHANNELS) != 0:
-            await self._abort_speech_stream()
-            asyncio.create_task(self.ws.close(code=1003, reason="invalid pcm chunk length"))
-            return False
-        self._pcm_buffer.extend(payload)
-        if payload_bytes > 0:
-            try:
-                await self._push_speech_stream(payload)
-            except Exception:
-                await self._abort_speech_stream()
-                asyncio.create_task(self.ws.close(code=1011, reason="speech streaming failed"))
-                return False
-            self._pcm_data_counter += 1
-        return True
-
-    async def _handle_listening_end(self, payload_bytes: int, payload: bytes) -> None:
-        logger.info("Received END payload_bytes=%d", payload_bytes)
-        if not self._streaming:
-            await self._abort_speech_stream()
-            await self.ws.close(code=1003, reason="end received before start")
-            return
-        if payload_bytes % (_SAMPLE_WIDTH * _CHANNELS) != 0:
-            await self._abort_speech_stream()
-            await self.ws.close(code=1003, reason="invalid pcm tail length")
-            return
-        self._pcm_buffer.extend(payload)
-        if payload_bytes > 0:
-            try:
-                await self._push_speech_stream(payload)
-            except Exception:
-                await self._abort_speech_stream()
-                await self.ws.close(code=1011, reason="speech streaming failed")
-                return
-
-        if len(self._pcm_buffer) == 0 or len(self._pcm_buffer) % (_SAMPLE_WIDTH * _CHANNELS) != 0:
-            await self._abort_speech_stream()
-            await self.ws.close(code=1003, reason="invalid accumulated pcm length")
-            return
-
-        # Uplink audio has been fully received: tell firmware to enter Thinking state.
-        await self._send_state_command(FirmwareState.THINKING)
-
-        frames = len(self._pcm_buffer) // (_SAMPLE_WIDTH * _CHANNELS)
-        duration_seconds = frames / float(_SAMPLE_RATE_HZ)
-
-        ws_meta = {
-            "sample_rate": _SAMPLE_RATE_HZ,
-            "frames": frames,
-            "channels": _CHANNELS,
-            "duration_seconds": round(duration_seconds, 3),
-        }
-        if self._debug_recording:
-            _filepath, filename = self._save_wav(bytes(self._pcm_buffer))
-            ws_meta["text"] = f"Saved as {filename}"
-            ws_meta["path"] = f"recordings/{filename}"
-        else:
-            ws_meta["text"] = "Recording skipped (DEBUG_RECODING!=1)"
-
-        await self.ws.send_json(ws_meta)
-
-        transcript = await self._transcribe_async(bytes(self._pcm_buffer))
-
-        self._streaming = False
-        self._pcm_buffer = bytearray()
-
-        if transcript.strip() == "":
-            self._message_error = EmptyTranscriptError("Speech recognition result is empty")
-            return
-
-        self._transcript = transcript
-        self._message_ready.set()
 
     def _handle_wakeword_event(self, msg_type: int, payload: bytes) -> None:
         if msg_type != _WsMsgType.DATA:
@@ -414,57 +298,6 @@ class WsProxy:
         )
         await self.ws.send_bytes(hdr + payload)
         self._down_seq += 1
-
-    def _save_wav(self, pcm_bytes: bytes) -> tuple[Path, str]:
-        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S_%f")
-        filename = f"rec_ws_{timestamp}.wav"
-        filepath = self.recordings_dir / filename
-
-        with wave.open(str(filepath), "wb") as wav_fp:
-            wav_fp.setnchannels(_CHANNELS)
-            wav_fp.setsampwidth(_SAMPLE_WIDTH)
-            wav_fp.setframerate(_SAMPLE_RATE_HZ)
-            wav_fp.writeframes(pcm_bytes)
-
-        logger.info("Saved WAV: %s", filename)
-        return filepath, filename
-
-    async def _transcribe_async(self, pcm_bytes: bytes) -> str:
-        if self._speech_stream is not None:
-            return await self._finish_speech_stream()
-        return await self._transcribe(pcm_bytes)
-
-    async def _transcribe(self, pcm_bytes: bytes) -> str:
-        transcript = await self.speech_recognizer.transcribe(
-            pcm_bytes,
-            sample_rate_hz=_SAMPLE_RATE_HZ,
-            channels=_CHANNELS,
-            sample_width=_SAMPLE_WIDTH,
-            language_code="ja-JP",
-        )
-        if transcript:
-            logger.info("Transcript: %s", transcript)
-        return transcript
-
-    async def _push_speech_stream(self, pcm_bytes: bytes) -> None:
-        if self._speech_stream is not None:
-            await self._speech_stream.push_audio(pcm_bytes)
-
-    async def _finish_speech_stream(self) -> str:
-        speech_stream = self._speech_stream
-        self._speech_stream = None
-        if speech_stream is None:
-            return ""
-        transcript = await speech_stream.finish()
-        if transcript:
-            logger.info("Transcript: %s", transcript)
-        return transcript
-
-    async def _abort_speech_stream(self) -> None:
-        speech_stream = self._speech_stream
-        self._speech_stream = None
-        if speech_stream is not None:
-            await speech_stream.abort()
 
     def _extract_pcm(self, wav_bytes: bytes) -> tuple[bytes, int, int, int]:
         with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
