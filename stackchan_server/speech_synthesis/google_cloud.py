@@ -3,13 +3,14 @@ from __future__ import annotations
 import io
 import os
 import wave
+from collections.abc import AsyncIterator
 from logging import getLogger
 from typing import Any
 
 from google import genai
 from google.genai import types
 
-from ..types import SpeechSynthesizer
+from ..types import AudioFormat, StreamingSpeechSynthesizer
 
 logger = getLogger(__name__)
 
@@ -18,6 +19,11 @@ _DEFAULT_LOCATION = "global"
 _PCM_SAMPLE_RATE_HZ = 24000
 _PCM_CHANNELS = 1
 _PCM_SAMPLE_WIDTH = 2
+_OUTPUT_FORMAT = AudioFormat(
+    sample_rate_hz=_PCM_SAMPLE_RATE_HZ,
+    channels=_PCM_CHANNELS,
+    sample_width=_PCM_SAMPLE_WIDTH,
+)
 
 
 def create_vertexai_client() -> Any:
@@ -28,7 +34,7 @@ def create_vertexai_client() -> Any:
     ).aio
 
 
-class GoogleCloudTextToSpeech(SpeechSynthesizer):
+class GoogleCloudTextToSpeech(StreamingSpeechSynthesizer):
     def __init__(
         self,
         *,
@@ -44,7 +50,24 @@ class GoogleCloudTextToSpeech(SpeechSynthesizer):
         self._style_instructions = style_instructions
         self._client = client or create_vertexai_client()
 
+    @property
+    def output_format(self) -> AudioFormat:
+        return _OUTPUT_FORMAT
+
     async def synthesize(self, text: str) -> bytes:
+        pcm_bytes = bytearray()
+        async for chunk in self.synthesize_stream(text):
+            pcm_bytes.extend(chunk)
+        logger.info(
+            "Gemini TTS response pcm_bytes=%d model=%s language_code=%s voice_name=%s",
+            len(pcm_bytes),
+            self._model,
+            self._language_code,
+            self._voice_name,
+        )
+        return self._wrap_pcm_as_wav(bytes(pcm_bytes))
+
+    async def synthesize_stream(self, text: str) -> AsyncIterator[bytes]:
         logger.info(
             "Requesting Gemini TTS model=%s language_code=%s voice_name=%s text_chars=%d",
             self._model,
@@ -52,7 +75,7 @@ class GoogleCloudTextToSpeech(SpeechSynthesizer):
             self._voice_name,
             len(text),
         )
-        response = await self._client.models.generate_content(
+        async for response in await self._client.models.generate_content_stream(
             model=self._model,
             contents=self._build_contents(text),
             config=types.GenerateContentConfig(
@@ -66,16 +89,10 @@ class GoogleCloudTextToSpeech(SpeechSynthesizer):
                     ),
                 ),
             ),
-        )
-        pcm_bytes = self._extract_audio_bytes(response)
-        logger.info(
-            "Gemini TTS response pcm_bytes=%d model=%s language_code=%s voice_name=%s",
-            len(pcm_bytes),
-            self._model,
-            self._language_code,
-            self._voice_name,
-        )
-        return self._wrap_pcm_as_wav(pcm_bytes)
+        ):
+            chunk = self._extract_audio_bytes(response)
+            if chunk:
+                yield chunk
 
     def _build_contents(self, text: str) -> str:
         if not self._style_instructions:

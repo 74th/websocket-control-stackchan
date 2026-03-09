@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from dataclasses import dataclass
+from typing import AsyncIterator, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -37,17 +38,31 @@ class StreamingSpeechRecognizer(SpeechRecognizer, Protocol):
     ) -> StreamingSpeechSession: ...
 
 
-__all__ = ["SpeechRecognizer", "StreamingSpeechRecognizer", "StreamingSpeechSession"]
-
-
 @runtime_checkable
 class SpeechSynthesizer(Protocol):
     async def synthesize(self, text: str) -> bytes: ...
 
 
+@dataclass(frozen=True)
+class AudioFormat:
+    sample_rate_hz: int
+    channels: int
+    sample_width: int
+
+
+@runtime_checkable
+class StreamingSpeechSynthesizer(SpeechSynthesizer, Protocol):
+    @property
+    def output_format(self) -> AudioFormat: ...
+
+    def synthesize_stream(self, text: str) -> AsyncIterator[bytes]: ...
+
+
 __all__ = [
+    "AudioFormat",
     "SpeechRecognizer",
     "StreamingSpeechRecognizer",
     "StreamingSpeechSession",
     "SpeechSynthesizer",
+    "StreamingSpeechSynthesizer",
 ]

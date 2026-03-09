@@ -12,7 +12,7 @@ from typing import Awaitable, Callable
 from fastapi import WebSocket, WebSocketDisconnect
 
 from .listen import TimeoutError
-from .types import SpeechSynthesizer
+from .types import AudioFormat, SpeechSynthesizer, StreamingSpeechSynthesizer
 
 logger = getLogger(__name__)
 
@@ -103,6 +103,13 @@ class SpeakHandler:
     async def _start_talking_stream(self, text: str, *, next_seq: Callable[[], int]) -> None:
         self._speaking = True
         try:
+            if isinstance(self.speech_synthesizer, StreamingSpeechSynthesizer):
+                await self._start_talking_streaming(
+                    text,
+                    self.speech_synthesizer,
+                    next_seq=next_seq,
+                )
+                return
             wav_bytes = await self.speech_synthesizer.synthesize(text)
             logger.info("Synthesized wav_bytes=%d text_chars=%d", len(wav_bytes), len(text))
             pcm_bytes, tts_sample_rate, tts_channels, tts_sample_width = self._extract_pcm(wav_bytes)
@@ -148,6 +155,74 @@ class SpeakHandler:
             logger.exception("Speech synthesis failed")
             await self.ws.send_json({"error": f"speech synthesis failed: {exc}"})
 
+    async def _start_talking_streaming(
+        self,
+        text: str,
+        speech_synthesizer: StreamingSpeechSynthesizer,
+        *,
+        next_seq: Callable[[], int],
+    ) -> None:
+        output_format = speech_synthesizer.output_format
+        logger.info(
+            "Streaming synthesized audio sample_rate=%d channels=%d sample_width=%d",
+            output_format.sample_rate_hz,
+            output_format.channels,
+            output_format.sample_width,
+        )
+        if output_format.sample_width != self.sample_width:
+            await self.ws.send_json({"error": f"unsupported sample width {output_format.sample_width}"})
+            self._speaking = False
+            return
+
+        bytes_per_second = (
+            output_format.sample_rate_hz * output_format.channels * output_format.sample_width
+        )
+        segment_bytes = int(bytes_per_second * (self.down_segment_millis / 1000))
+        if segment_bytes <= 0:
+            await self.ws.send_json({"error": "invalid segment size computed"})
+            self._speaking = False
+            return
+
+        pending = bytearray()
+        saved_pcm = bytearray()
+        segment_count = 0
+        base_time: float | None = None
+        async for chunk in speech_synthesizer.synthesize_stream(text):
+            pending.extend(chunk)
+            if self.debug_recording:
+                saved_pcm.extend(chunk)
+            while len(pending) >= segment_bytes:
+                segment = bytes(pending[:segment_bytes])
+                del pending[:segment_bytes]
+                base_time = await self._wait_for_segment_slot(segment_count, base_time=base_time)
+                await self._send_segment(
+                    segment,
+                    output_format.sample_rate_hz,
+                    output_format.channels,
+                    next_seq=next_seq,
+                )
+                segment_count += 1
+        if pending:
+            base_time = await self._wait_for_segment_slot(segment_count, base_time=base_time)
+            await self._send_segment(
+                bytes(pending),
+                output_format.sample_rate_hz,
+                output_format.channels,
+                next_seq=next_seq,
+            )
+            segment_count += 1
+        logger.info("Prepared %d playback segments from streaming TTS", segment_count)
+
+        if self.debug_recording and saved_pcm:
+            wav_bytes = self._wrap_pcm_as_wav(bytes(saved_pcm), output_format)
+            filepath, filename = self._save_wav(wav_bytes)
+            logger.info("Saved synthesized WAV: %s", filename)
+            await self.ws.send_json({"tts_debug_path": f"recordings/{filename}", "tts_debug_bytes": len(wav_bytes)})
+
+        if segment_count == 0:
+            logger.warning("Synthesized audio is empty")
+            self._speaking = False
+
     def _extract_pcm(self, wav_bytes: bytes) -> tuple[bytes, int, int, int]:
         with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
             pcm_bytes = wf.readframes(wf.getnframes())
@@ -162,6 +237,33 @@ class SpeakHandler:
         filepath = self.recordings_dir / filename
         filepath.write_bytes(wav_bytes)
         return filepath, filename
+
+    def _wrap_pcm_as_wav(self, pcm_bytes: bytes, audio_format: AudioFormat) -> bytes:
+        with io.BytesIO() as buffer:
+            with wave.open(buffer, "wb") as wav_fp:
+                wav_fp.setnchannels(audio_format.channels)
+                wav_fp.setsampwidth(audio_format.sample_width)
+                wav_fp.setframerate(audio_format.sample_rate_hz)
+                wav_fp.writeframes(pcm_bytes)
+            return buffer.getvalue()
+
+    async def _wait_for_segment_slot(self, segment_index: int, *, base_time: float | None) -> float:
+        loop = asyncio.get_running_loop()
+        if base_time is None:
+            return loop.time()
+
+        if segment_index == 0:
+            target_ms = 0
+        elif segment_index == 1:
+            target_ms = self.down_segment_stagger_millis
+        else:
+            target_ms = self.down_segment_stagger_millis + (segment_index - 1) * self.down_segment_millis
+
+        target_time = base_time + target_ms / 1000
+        now = loop.time()
+        if target_time > now:
+            await asyncio.sleep(target_time - now)
+        return base_time
 
     async def _send_segments(
         self,

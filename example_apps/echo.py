@@ -5,14 +5,20 @@ import os
 from logging import getLogger
 
 from stackchan_server.app import StackChanApp
-from stackchan_server.speech_synthesis import GoogleCloudTextToSpeech
+from stackchan_server.speech_synthesis import (
+    VoiceVoxSpeechSynthesizer,
+)
 from stackchan_server.ws_proxy import EmptyTranscriptError, WsProxy
 
 logger = getLogger(__name__)
-logging.basicConfig(level=os.getenv("STACKCHAN_LOG_LEVEL", "INFO"))
+logging.basicConfig(
+    level=os.getenv("STACKCHAN_LOG_LEVEL", "INFO"),
+    format="%(asctime)s.%(msecs)03d %(levelname)s:%(name)s:%(message)s",
+    datefmt="%H:%M:%S",
+)
 
 
-app = StackChanApp(speech_synthesizer=GoogleCloudTextToSpeech())
+app = StackChanApp()
 
 
 @app.setup
