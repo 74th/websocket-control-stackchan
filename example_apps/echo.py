@@ -5,6 +5,8 @@ import os
 from logging import getLogger
 
 from stackchan_server.app import StackChanApp
+from stackchan_server.speech_recognition import WhisperCppSpeechToText
+from stackchan_server.speech_synthesis import VoiceVoxSpeechSynthesizer
 from stackchan_server.ws_proxy import EmptyTranscriptError, WsProxy
 
 logger = getLogger(__name__)
@@ -14,8 +16,19 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
+def _create_app() -> StackChanApp:
+    whisper_model = os.getenv("STACKCHAN_WHISPER_MODEL")
+    if whisper_model:
+        return StackChanApp(
+            speech_recognizer=WhisperCppSpeechToText(
+                model_path=whisper_model,
+            ),
+            speech_synthesizer=VoiceVoxSpeechSynthesizer(),
+        )
+    return StackChanApp()
 
-app = StackChanApp()
+
+app = _create_app()
 
 
 @app.setup
