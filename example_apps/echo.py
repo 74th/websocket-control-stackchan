@@ -3,7 +3,7 @@ from __future__ import annotations
 from logging import StreamHandler, getLogger
 
 from stackchan_server.app import StackChanApp
-from stackchan_server.ws_proxy import WsProxy
+from stackchan_server.ws_proxy import EmptyTranscriptError, WsProxy
 
 
 logger = getLogger(__name__)
@@ -22,7 +22,10 @@ async def setup(proxy: WsProxy):
 @app.talk_session
 async def talk_session(proxy: WsProxy):
     while True:
-        text = await proxy.listen()
+        try:
+            text = await proxy.listen()
+        except EmptyTranscriptError:
+            return
         if not text:
             return
         logger.info("Heard: %s", text)
