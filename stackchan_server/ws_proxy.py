@@ -12,8 +12,8 @@ from typing import Optional
 from fastapi import WebSocket, WebSocketDisconnect
 
 from .listen import EmptyTranscriptError, ListenHandler, TimeoutError
-from .speak import SpeakHandler, create_voicevox_client
-from .types import SpeechRecognizer
+from .speak import SpeakHandler
+from .types import SpeechRecognizer, SpeechSynthesizer
 
 logger = getLogger(__name__)
 
@@ -56,9 +56,15 @@ class _WsMsgType(IntEnum):
     END = 3
 
 class WsProxy:
-    def __init__(self, websocket: WebSocket, speech_recognizer: SpeechRecognizer):
+    def __init__(
+        self,
+        websocket: WebSocket,
+        speech_recognizer: SpeechRecognizer,
+        speech_synthesizer: SpeechSynthesizer,
+    ):
         self.ws = websocket
         self.speech_recognizer = speech_recognizer
+        self.speech_synthesizer = speech_synthesizer
         self.recordings_dir = _RECORDINGS_DIR
         self._debug_recording = _DEBUG_RECORDING_ENABLED
         if self._debug_recording:
@@ -85,6 +91,7 @@ class WsProxy:
             down_segment_millis=_DOWN_SEGMENT_MILLIS,
             down_segment_stagger_millis=_DOWN_SEGMENT_STAGGER_MILLIS,
             sample_width=_SAMPLE_WIDTH,
+            speech_synthesizer=self.speech_synthesizer,
         )
 
         self._receiving_task: Optional[asyncio.Task] = None
@@ -253,4 +260,4 @@ class WsProxy:
         return seq
 
 
-__all__ = ["WsProxy", "FirmwareState", "TimeoutError", "EmptyTranscriptError", "create_voicevox_client"]
+__all__ = ["WsProxy", "FirmwareState", "TimeoutError", "EmptyTranscriptError"]

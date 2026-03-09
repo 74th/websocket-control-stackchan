@@ -38,3 +38,16 @@ class StreamingSpeechRecognizer(SpeechRecognizer, Protocol):
 
 
 __all__ = ["SpeechRecognizer", "StreamingSpeechRecognizer", "StreamingSpeechSession"]
+
+
+@runtime_checkable
+class SpeechSynthesizer(Protocol):
+    async def synthesize(self, text: str) -> bytes: ...
+
+
+__all__ = [
+    "SpeechRecognizer",
+    "StreamingSpeechRecognizer",
+    "StreamingSpeechSession",
+    "SpeechSynthesizer",
+]

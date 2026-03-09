@@ -2,23 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import io
-import os
 import struct
 import wave
 from logging import getLogger
 from typing import Awaitable, Callable
 
 from fastapi import WebSocket, WebSocketDisconnect
-from vvclient import Client as VVClient
 
 from .listen import TimeoutError
+from .types import SpeechSynthesizer
 
 logger = getLogger(__name__)
-
-
-def create_voicevox_client() -> VVClient:
-    voicevox_url = os.getenv("STACKCHAN_VOICEVOX_URL", "http://localhost:50021")
-    return VVClient(base_uri=voicevox_url)
 
 
 class SpeakHandler:
@@ -35,6 +29,7 @@ class SpeakHandler:
         down_segment_millis: int,
         down_segment_stagger_millis: int,
         sample_width: int,
+        speech_synthesizer: SpeechSynthesizer,
     ) -> None:
         self.ws = websocket
         self.ws_header_fmt = ws_header_fmt
@@ -46,6 +41,7 @@ class SpeakHandler:
         self.down_segment_millis = down_segment_millis
         self.down_segment_stagger_millis = down_segment_stagger_millis
         self.sample_width = sample_width
+        self.speech_synthesizer = speech_synthesizer
 
         self._speaking = False
         self._speak_finished_counter = 0
@@ -101,10 +97,7 @@ class SpeakHandler:
     async def _start_talking_stream(self, text: str, *, next_seq: Callable[[], int]) -> None:
         self._speaking = True
         try:
-            async with create_voicevox_client() as client:
-                audio_query = await client.create_audio_query(text, speaker=29)
-                wav_bytes = await audio_query.synthesis(speaker=29)
-
+            wav_bytes = await self.speech_synthesizer.synthesize(text)
             pcm_bytes, tts_sample_rate, tts_channels, tts_sample_width = self._extract_pcm(wav_bytes)
             if len(pcm_bytes) == 0:
                 self._speaking = False
@@ -221,5 +214,4 @@ class SpeakHandler:
         )
         await self.ws.send_bytes(end_hdr)
 
-
-__all__ = ["SpeakHandler", "create_voicevox_client"]
+__all__ = ["SpeakHandler"]
