@@ -13,6 +13,7 @@ from typing import cast
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from ..static import LISTEN_AUDIO_FORMAT, LISTEN_LANGUAGE_CODE
 from ..types import SpeechRecognizer
 
 logger = getLogger(__name__)
@@ -26,33 +27,20 @@ class WhisperServerSpeechToText(SpeechRecognizer):
         self,
         *,
         server_url: str | None = None,
-        language: str = "ja",
+        language: str | None = None,
         detect_language: bool = False,
         response_format: str = "verbose_json",
         silence_rms_threshold: float = _DEFAULT_SILENCE_RMS_THRESHOLD,
         request_timeout_seconds: float = 60.0,
     ) -> None:
         self._server_url = server_url or _default_server_url()
-        self._language = language
+        self._language = language or _normalize_language(LISTEN_LANGUAGE_CODE)
         self._detect_language = detect_language
         self._response_format = response_format
         self._silence_rms_threshold = silence_rms_threshold
         self._request_timeout_seconds = request_timeout_seconds
 
-    async def transcribe(
-        self,
-        pcm_bytes: bytes,
-        *,
-        sample_rate_hz: int,
-        channels: int,
-        sample_width: int,
-        language_code: str = "ja-JP",
-    ) -> str:
-        if channels != 1:
-            raise ValueError(f"whisper-server only supports mono input here: channels={channels}")
-        if sample_width != 2:
-            raise ValueError(f"whisper-server expects 16-bit PCM here: sample_width={sample_width}")
-
+    async def transcribe(self, pcm_bytes: bytes) -> str:
         rms_level = _pcm_rms_level(pcm_bytes)
         if rms_level < self._silence_rms_threshold:
             logger.info(
@@ -64,14 +52,14 @@ class WhisperServerSpeechToText(SpeechRecognizer):
 
         wav_bytes = _wrap_pcm_as_wav(
             pcm_bytes,
-            sample_rate_hz=sample_rate_hz,
-            channels=channels,
-            sample_width=sample_width,
+            sample_rate_hz=LISTEN_AUDIO_FORMAT.sample_rate_hz,
+            channels=LISTEN_AUDIO_FORMAT.channels,
+            sample_width=LISTEN_AUDIO_FORMAT.sample_width,
         )
         transcript = await asyncio.to_thread(
             self._request_transcript,
             wav_bytes,
-            _normalize_language(language_code) or self._language,
+            self._language,
         )
         if transcript:
             logger.info("whisper-server transcript: %s", transcript)

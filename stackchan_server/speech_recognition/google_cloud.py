@@ -5,6 +5,7 @@ from logging import getLogger
 
 from google.cloud import speech
 
+from ..static import LISTEN_AUDIO_FORMAT, LISTEN_LANGUAGE_CODE
 from ..types import StreamingSpeechRecognizer, StreamingSpeechSession
 
 logger = getLogger(__name__)
@@ -15,25 +16,13 @@ class _GoogleCloudStreamingSession(StreamingSpeechSession):
     def __init__(
         self,
         client: speech.SpeechAsyncClient,
-        *,
-        sample_rate_hz: int,
-        channels: int,
-        sample_width: int,
-        language_code: str,
     ) -> None:
-        if channels != 1:
-            raise ValueError(f"Google Cloud Speech only supports mono input here: channels={channels}")
-        if sample_width != 2:
-            raise ValueError(
-                f"Google Cloud Speech LINEAR16 requires 16-bit samples here: sample_width={sample_width}"
-            )
-
         self._client = client
         self._config = speech.StreamingRecognitionConfig(
             config=speech.RecognitionConfig(
                 encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-                sample_rate_hertz=sample_rate_hz,
-                language_code=language_code,
+                sample_rate_hertz=LISTEN_AUDIO_FORMAT.sample_rate_hz,
+                language_code=LISTEN_LANGUAGE_CODE,
             ),
             interim_results=False,
             single_utterance=False,
@@ -109,47 +98,19 @@ class GoogleCloudSpeechToText(StreamingSpeechRecognizer):
     def __init__(self, client: speech.SpeechAsyncClient | None = None) -> None:
         self._client = client or speech.SpeechAsyncClient()
 
-    async def transcribe(
-        self,
-        pcm_bytes: bytes,
-        *,
-        sample_rate_hz: int,
-        channels: int,
-        sample_width: int,
-        language_code: str = "ja-JP",
-    ) -> str:
-        if channels != 1:
-            raise ValueError(f"Google Cloud Speech only supports mono input here: channels={channels}")
-        if sample_width != 2:
-            raise ValueError(
-                f"Google Cloud Speech LINEAR16 requires 16-bit samples here: sample_width={sample_width}"
-            )
-
+    async def transcribe(self, pcm_bytes: bytes) -> str:
         audio = speech.RecognitionAudio(content=pcm_bytes)
         config = speech.RecognitionConfig(
             encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            sample_rate_hertz=sample_rate_hz,
-            language_code=language_code,
+            sample_rate_hertz=LISTEN_AUDIO_FORMAT.sample_rate_hz,
+            language_code=LISTEN_LANGUAGE_CODE,
         )
         response = await self._client.recognize(config=config, audio=audio)
 
         return "".join(result.alternatives[0].transcript for result in response.results)
 
-    async def start_stream(
-        self,
-        *,
-        sample_rate_hz: int,
-        channels: int,
-        sample_width: int,
-        language_code: str = "ja-JP",
-    ) -> StreamingSpeechSession:
-        return _GoogleCloudStreamingSession(
-            self._client,
-            sample_rate_hz=sample_rate_hz,
-            channels=channels,
-            sample_width=sample_width,
-            language_code=language_code,
-        )
+    async def start_stream(self) -> StreamingSpeechSession:
+        return _GoogleCloudStreamingSession(self._client)
 
 
 __all__ = ["GoogleCloudSpeechToText"]

@@ -9,6 +9,7 @@ from typing import Awaitable, Callable, Optional
 
 from fastapi import WebSocket, WebSocketDisconnect
 
+from .static import LISTEN_AUDIO_FORMAT
 from .types import SpeechRecognizer, StreamingSpeechRecognizer, StreamingSpeechSession
 
 logger = getLogger(__name__)
@@ -29,20 +30,13 @@ class ListenHandler:
         speech_recognizer: SpeechRecognizer,
         recordings_dir: Path,
         debug_recording: bool,
-        sample_rate_hz: int,
-        channels: int,
-        sample_width: int,
         listen_audio_timeout_seconds: float,
-        language_code: str = "ja-JP",
     ) -> None:
         self.speech_recognizer = speech_recognizer
         self.recordings_dir = recordings_dir
         self.debug_recording = debug_recording
-        self.sample_rate_hz = sample_rate_hz
-        self.channels = channels
-        self.sample_width = sample_width
+        self.audio_format = LISTEN_AUDIO_FORMAT
         self.listen_audio_timeout_seconds = listen_audio_timeout_seconds
-        self.language_code = language_code
 
         self._pcm_buffer = bytearray()
         self._streaming = False
@@ -96,12 +90,7 @@ class ListenHandler:
         self._message_error = None
         if isinstance(self.speech_recognizer, StreamingSpeechRecognizer):
             try:
-                self._speech_stream = await self.speech_recognizer.start_stream(
-                    sample_rate_hz=self.sample_rate_hz,
-                    channels=self.channels,
-                    sample_width=self.sample_width,
-                    language_code=self.language_code,
-                )
+                self._speech_stream = await self.speech_recognizer.start_stream()
             except Exception:
                 asyncio.create_task(websocket.close(code=1011, reason="speech streaming failed"))
                 return False
@@ -113,7 +102,7 @@ class ListenHandler:
             await self._abort_speech_stream()
             asyncio.create_task(websocket.close(code=1003, reason="data received before start"))
             return False
-        if payload_bytes % (self.sample_width * self.channels) != 0:
+        if payload_bytes % (self.audio_format.sample_width * self.audio_format.channels) != 0:
             await self._abort_speech_stream()
             asyncio.create_task(websocket.close(code=1003, reason="invalid pcm chunk length"))
             return False
@@ -142,7 +131,7 @@ class ListenHandler:
             await self._abort_speech_stream()
             await websocket.close(code=1003, reason="end received before start")
             return
-        if payload_bytes % (self.sample_width * self.channels) != 0:
+        if payload_bytes % (self.audio_format.sample_width * self.audio_format.channels) != 0:
             await self._abort_speech_stream()
             await websocket.close(code=1003, reason="invalid pcm tail length")
             return
@@ -155,19 +144,21 @@ class ListenHandler:
                 await websocket.close(code=1011, reason="speech streaming failed")
                 return
 
-        if len(self._pcm_buffer) == 0 or len(self._pcm_buffer) % (self.sample_width * self.channels) != 0:
+        if len(self._pcm_buffer) == 0 or len(self._pcm_buffer) % (
+            self.audio_format.sample_width * self.audio_format.channels
+        ) != 0:
             await self._abort_speech_stream()
             await websocket.close(code=1003, reason="invalid accumulated pcm length")
             return
 
         await send_state_command(thinking_state)
 
-        frames = len(self._pcm_buffer) // (self.sample_width * self.channels)
-        duration_seconds = frames / float(self.sample_rate_hz)
+        frames = len(self._pcm_buffer) // (self.audio_format.sample_width * self.audio_format.channels)
+        duration_seconds = frames / float(self.audio_format.sample_rate_hz)
         ws_meta = {
-            "sample_rate": self.sample_rate_hz,
+            "sample_rate": self.audio_format.sample_rate_hz,
             "frames": frames,
-            "channels": self.channels,
+            "channels": self.audio_format.channels,
             "duration_seconds": round(duration_seconds, 3),
         }
         if self.debug_recording:
@@ -197,9 +188,9 @@ class ListenHandler:
         filepath = self.recordings_dir / filename
 
         with wave.open(str(filepath), "wb") as wav_fp:
-            wav_fp.setnchannels(self.channels)
-            wav_fp.setsampwidth(self.sample_width)
-            wav_fp.setframerate(self.sample_rate_hz)
+            wav_fp.setnchannels(self.audio_format.channels)
+            wav_fp.setsampwidth(self.audio_format.sample_width)
+            wav_fp.setframerate(self.audio_format.sample_rate_hz)
             wav_fp.writeframes(pcm_bytes)
 
         logger.info("Saved WAV: %s", filename)
@@ -211,13 +202,7 @@ class ListenHandler:
         return await self._transcribe(pcm_bytes)
 
     async def _transcribe(self, pcm_bytes: bytes) -> str:
-        transcript = await self.speech_recognizer.transcribe(
-            pcm_bytes,
-            sample_rate_hz=self.sample_rate_hz,
-            channels=self.channels,
-            sample_width=self.sample_width,
-            language_code=self.language_code,
-        )
+        transcript = await self.speech_recognizer.transcribe(pcm_bytes)
         if transcript:
             logger.info("Transcript: %s", transcript)
         return transcript
