@@ -27,7 +27,7 @@ class WhisperCppSpeechToText(SpeechRecognizer):
     def __init__(
         self,
         *,
-        model_path: str | Path,
+        model_path: str | Path | None = None,
         cli_path: str = "whisper-cli",
         threads: int | None = None,
         translate: bool = False,
@@ -41,7 +41,10 @@ class WhisperCppSpeechToText(SpeechRecognizer):
         vad_speech_pad_ms: int = _DEFAULT_VAD_SPEECH_PAD_MS,
         silence_rms_threshold: float = _DEFAULT_SILENCE_RMS_THRESHOLD,
     ) -> None:
-        self._model_path = Path(model_path)
+        resolved_model_path = model_path or os.getenv("STACKCHAN_WHISPER_MODEL")
+        if not resolved_model_path:
+            raise ValueError("whisper.cpp model_path is required or set STACKCHAN_WHISPER_MODEL")
+        self._model_path = Path(resolved_model_path)
         self._cli_path = cli_path
         self._threads = threads
         self._translate = translate
