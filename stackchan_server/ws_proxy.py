@@ -100,14 +100,24 @@ class WsProxy:
         self._closed = False
 
         self._down_seq = 0
+        self._current_firmware_state: FirmwareState = FirmwareState.IDLE
 
     @property
     def closed(self) -> bool:
         return self._closed
 
     @property
+    def current_state(self) -> FirmwareState:
+        return self._current_firmware_state
+
+    @property
     def receive_task(self) -> Optional[asyncio.Task]:
         return self._receiving_task
+
+    def trigger_wakeword(self) -> None:
+        """Web API から擬似的に WAKEWORD_EVT を発火させる。"""
+        logger.info("Triggered wakeword via API")
+        self._wakeword_event.set()
 
     async def wait_for_talk_session(self) -> None:
         while True:
@@ -232,6 +242,7 @@ class WsProxy:
         raw_state = int(payload[0])
         try:
             state = FirmwareState(raw_state)
+            self._current_firmware_state = state
             logger.info("Received firmware state=%s(%d)", state.name, raw_state)
         except ValueError:
             logger.info("Received firmware state=%d", raw_state)
