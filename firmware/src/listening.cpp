@@ -6,7 +6,7 @@
 
 Listening::Listening(WebSocketsClient &ws, StateMachine &sm, int sampleRate)
     : ws_(ws), state_(sm), sample_rate_(sampleRate),
-      chunk_samples_(static_cast<size_t>(sampleRate) / 2),
+      chunk_samples_(static_cast<size_t>(sampleRate) / 8),
       ring_capacity_samples_(static_cast<size_t>(sampleRate) * 2)
 {
 }
@@ -36,6 +36,11 @@ void Listening::init()
 
 void Listening::begin()
 {
+  auto mic_cfg = M5.Mic.config();
+  mic_cfg.sample_rate = 16000;
+  mic_cfg.stereo = false;
+  // mic_cfg.over_sampling = 4;
+  M5.Mic.config(mic_cfg);
   M5.Mic.begin();
   startStreaming();
 }

@@ -240,6 +240,7 @@ void setup()
   auto mic_cfg = M5.Mic.config();
   mic_cfg.sample_rate = SAMPLE_RATE;
   mic_cfg.stereo = false;
+  // mic_cfg.over_sampling = 4;
   M5.Mic.config(mic_cfg);
 
   listening.init();
