@@ -13,6 +13,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from .listen import EmptyTranscriptError, ListenHandler, TimeoutError
 from .speak import SpeakHandler
+from .static import LISTEN_AUDIO_FORMAT
 from .types import SpeechRecognizer, SpeechSynthesizer
 
 logger = getLogger(__name__)
@@ -22,10 +23,6 @@ _RECORDINGS_DIR = _BASE_DIR / "recordings"
 
 _WS_HEADER_FMT = "<BBBHH"  # kind, msg_type, reserved, seq, payload_bytes
 _WS_HEADER_SIZE = struct.calcsize(_WS_HEADER_FMT)
-
-_SAMPLE_RATE_HZ = 16000
-_CHANNELS = 1
-_SAMPLE_WIDTH = 2  # bytes
 
 _DOWN_WAV_CHUNK = 4096  # bytes per WebSocket frame for synthesized audio (raw PCM)
 _DOWN_SEGMENT_MILLIS = 2000  # duration of a single START-DATA-END segment in milliseconds
@@ -75,9 +72,6 @@ class WsProxy:
             speech_recognizer=self.speech_recognizer,
             recordings_dir=self.recordings_dir,
             debug_recording=self._debug_recording,
-            sample_rate_hz=_SAMPLE_RATE_HZ,
-            channels=_CHANNELS,
-            sample_width=_SAMPLE_WIDTH,
             listen_audio_timeout_seconds=_LISTEN_AUDIO_TIMEOUT_SECONDS,
         )
         self._speaker = SpeakHandler(
@@ -90,7 +84,7 @@ class WsProxy:
             down_wav_chunk=_DOWN_WAV_CHUNK,
             down_segment_millis=_DOWN_SEGMENT_MILLIS,
             down_segment_stagger_millis=_DOWN_SEGMENT_STAGGER_MILLIS,
-            sample_width=_SAMPLE_WIDTH,
+            sample_width=LISTEN_AUDIO_FORMAT.sample_width,
             speech_synthesizer=self.speech_synthesizer,
             recordings_dir=self.recordings_dir,
             debug_recording=self._debug_recording,

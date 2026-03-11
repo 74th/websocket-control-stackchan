@@ -12,6 +12,7 @@ import wave
 from logging import getLogger
 from pathlib import Path
 
+from ..static import LISTEN_AUDIO_FORMAT, LISTEN_LANGUAGE_CODE
 from ..types import SpeechRecognizer
 
 logger = getLogger(__name__)
@@ -26,7 +27,7 @@ class WhisperCppSpeechToText(SpeechRecognizer):
     def __init__(
         self,
         *,
-        model_path: str | Path,
+        model_path: str | Path | None = None,
         cli_path: str = "whisper-cli",
         threads: int | None = None,
         translate: bool = False,
@@ -40,7 +41,10 @@ class WhisperCppSpeechToText(SpeechRecognizer):
         vad_speech_pad_ms: int = _DEFAULT_VAD_SPEECH_PAD_MS,
         silence_rms_threshold: float = _DEFAULT_SILENCE_RMS_THRESHOLD,
     ) -> None:
-        self._model_path = Path(model_path)
+        resolved_model_path = model_path or os.getenv("STACKCHAN_WHISPER_MODEL")
+        if not resolved_model_path:
+            raise ValueError("whisper.cpp model_path is required or set STACKCHAN_WHISPER_MODEL")
+        self._model_path = Path(resolved_model_path)
         self._cli_path = cli_path
         self._threads = threads
         self._translate = translate
@@ -54,19 +58,7 @@ class WhisperCppSpeechToText(SpeechRecognizer):
         self._vad_speech_pad_ms = vad_speech_pad_ms
         self._silence_rms_threshold = silence_rms_threshold
 
-    async def transcribe(
-        self,
-        pcm_bytes: bytes,
-        *,
-        sample_rate_hz: int,
-        channels: int,
-        sample_width: int,
-        language_code: str = "ja-JP",
-    ) -> str:
-        if channels != 1:
-            raise ValueError(f"whisper.cpp only supports mono input here: channels={channels}")
-        if sample_width != 2:
-            raise ValueError(f"whisper.cpp expects 16-bit PCM here: sample_width={sample_width}")
+    async def transcribe(self, pcm_bytes: bytes) -> str:
         if not self._model_path.is_file():
             raise FileNotFoundError(f"whisper.cpp model not found: {self._model_path}")
         if _pcm_rms_level(pcm_bytes) < self._silence_rms_threshold:
@@ -81,7 +73,7 @@ class WhisperCppSpeechToText(SpeechRecognizer):
         if cli_path is None:
             raise FileNotFoundError(f"whisper.cpp CLI not found in PATH: {self._cli_path}")
 
-        language = _normalize_language(language_code)
+        language = _normalize_language(LISTEN_LANGUAGE_CODE)
         with tempfile.TemporaryDirectory(prefix="stackchan_whisper_") as temp_dir_name:
             temp_dir = Path(temp_dir_name)
             wav_path = temp_dir / "input.wav"
@@ -90,9 +82,9 @@ class WhisperCppSpeechToText(SpeechRecognizer):
             _write_wav(
                 wav_path,
                 pcm_bytes,
-                sample_rate_hz=sample_rate_hz,
-                channels=channels,
-                sample_width=sample_width,
+                sample_rate_hz=LISTEN_AUDIO_FORMAT.sample_rate_hz,
+                channels=LISTEN_AUDIO_FORMAT.channels,
+                sample_width=LISTEN_AUDIO_FORMAT.sample_width,
             )
 
             command = [

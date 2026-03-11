@@ -6,15 +6,7 @@ from typing import AsyncIterator, Protocol, runtime_checkable
 
 @runtime_checkable
 class SpeechRecognizer(Protocol):
-    async def transcribe(
-        self,
-        pcm_bytes: bytes,
-        *,
-        sample_rate_hz: int,
-        channels: int,
-        sample_width: int,
-        language_code: str = "ja-JP",
-    ) -> str: ...
+    async def transcribe(self, pcm_bytes: bytes) -> str: ...
 
 
 @runtime_checkable
@@ -28,14 +20,7 @@ class StreamingSpeechSession(Protocol):
 
 @runtime_checkable
 class StreamingSpeechRecognizer(SpeechRecognizer, Protocol):
-    async def start_stream(
-        self,
-        *,
-        sample_rate_hz: int,
-        channels: int,
-        sample_width: int,
-        language_code: str = "ja-JP",
-    ) -> StreamingSpeechSession: ...
+    async def start_stream(self) -> StreamingSpeechSession: ...
 
 
 @runtime_checkable
