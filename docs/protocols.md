@@ -18,6 +18,8 @@ enum class MessageKind : uint8_t {
   WakeWordEvt = 4, // クライアント→サーバ（wake word 検知通知）
   StateEvt = 5, // クライアント→サーバ（現在状態通知）
   SpeakDoneEvt = 6, // クライアント→サーバ（発話完了通知）
+  ServoCmd = 7, // サーバ→クライアント（サーボ動作シーケンス指示）
+  ServoDoneEvt = 8, // クライアント→サーバ（サーボ動作シーケンス完了通知）
 };
 
 enum class MessageType : uint8_t {
@@ -92,6 +94,26 @@ struct __attribute__((packed)) WsHeader {
 - payload: 1 byte（`1=done`）
 - 役割: TTS再生が完了したことを通知する。`Idle` 遷移とは独立に扱える。
 
+### Downlink: kind = ServoCmd (7)
+
+- 方向: サーバー -> クライアント
+- メッセージ種別: `DATA` のみ使用
+- payload: 1 つの「サーボ動作シーケンス」をまとめて送る
+  - `<uint8 command_count>`
+  - 続いて `command_count` 個のコマンド
+    - `Sleep (op=0)`: `<uint8 op><int16 duration_ms>`
+    - `MoveX (op=1)`: `<uint8 op><int8 angle><int16 duration_ms>`
+    - `MoveY (op=2)`: `<uint8 op><int8 angle><int16 duration_ms>`
+- ファームウェアは受信後すぐにキューへ積み、`loop()` 内で非同期に順次実行する。
+- 新しい `ServoCmd` を受信した場合、現在のシーケンスは置き換える。
+
+### Uplink: kind = ServoDoneEvt (8)
+
+- 方向: クライアント -> サーバー
+- メッセージ種別: `DATA` のみ使用
+- payload: 1 byte（`1=done`）
+- 役割: 直前に受信した `ServoCmd` のシーケンス全体が完了したことを通知する。
+
 ### kind の拡張例
 
 - AudioPcm (1): 現行の PCM16LE アップリンク
@@ -100,6 +122,8 @@ struct __attribute__((packed)) WsHeader {
 - WakeWordEvt (4): wake word 検知通知
 - StateEvt (5): 現在状態通知
 - SpeakDoneEvt (6): 発話完了通知
+- ServoCmd (7): サーボ動作シーケンス指示
+- ServoDoneEvt (8): サーボ動作シーケンス完了通知
 
 ### 簡易バイト例（AudioPcm / DATA）
 

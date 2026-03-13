@@ -44,16 +44,29 @@ app = _create_app()
 @app.setup
 async def setup(proxy: WsProxy):
     logger.info("WebSocket connected")
+    await proxy.move_servo([("move_y", 90, 100)])
 
 
 @app.talk_session
 async def talk_session(proxy: WsProxy):
     while True:
         try:
+            await proxy.move_servo([("move_y", 80, 100)])
+
             text = await proxy.listen()
+
+            await proxy.move_servo([
+                ("move_y", 100, 100),
+                ("sleep", 200),
+                ("move_y", 90, 100),
+                ("sleep", 200),
+                ("move_y", 100, 100),
+                ("sleep", 200),
+                ("move_y", 90, 100),
+            ])
+
         except EmptyTranscriptError:
-            return
-        if not text:
+            await proxy.move_servo([("move_y", 90, 100)])
             return
         logger.info("Heard: %s", text)
         await proxy.speak(text)

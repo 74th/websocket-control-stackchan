@@ -19,6 +19,8 @@ enum class MessageKind : uint8_t
 	WakeWordEvt = 4, // wake word event (client -> server)
 	StateEvt = 5, // current state event (client -> server)
 	SpeakDoneEvt = 6, // speaking completed event (client -> server)
+	ServoCmd = 7, // servo command sequence (server -> client)
+	ServoDoneEvt = 8, // servo sequence completed event (client -> server)
 };
 
 enum class MessageType : uint8_t
@@ -45,4 +47,15 @@ enum class RemoteState : uint8_t
 	Listening = 1,
 	Thinking = 2,
 	Speaking = 3,
+};
+
+// payload for kind=ServoCmd, messageType=DATA
+// <uint8_t command_count><commands...>
+//   command op=Sleep: <uint8_t op><int16_t duration_ms>
+//   command op=MoveX/Y: <uint8_t op><int8_t angle><int16_t duration_ms>
+enum class ServoCommandOp : uint8_t
+{
+	Sleep = 0,
+	MoveX = 1,
+	MoveY = 2,
 };
