@@ -19,11 +19,6 @@ void WakeUpWord::init()
 
 void WakeUpWord::begin()
 {
-  auto mic_cfg = M5.Mic.config();
-  mic_cfg.sample_rate = 16000;
-  mic_cfg.stereo = false;
-  // mic_cfg.over_sampling = 4;
-  M5.Mic.config(mic_cfg);
   M5.Mic.begin();
   ESP_SR_M5.setMode(SR_MODE_WAKEWORD);
   ESP_SR_M5.resume();

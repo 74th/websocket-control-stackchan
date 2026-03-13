@@ -239,6 +239,7 @@ void setup()
   M5.begin(cfg);
   auto mic_cfg = M5.Mic.config();
   mic_cfg.sample_rate = SAMPLE_RATE;
+  mic_cfg.dma_buf_len = 256;
   mic_cfg.stereo = false;
   // mic_cfg.over_sampling = 4;
   M5.Mic.config(mic_cfg);

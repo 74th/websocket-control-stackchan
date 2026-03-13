@@ -36,11 +36,6 @@ void Listening::init()
 
 void Listening::begin()
 {
-  auto mic_cfg = M5.Mic.config();
-  mic_cfg.sample_rate = 16000;
-  mic_cfg.stereo = false;
-  // mic_cfg.over_sampling = 4;
-  M5.Mic.config(mic_cfg);
   M5.Mic.begin();
   startStreaming();
 }
