@@ -5,7 +5,7 @@ import os
 import struct
 from collections import deque
 from contextlib import suppress
-from enum import IntEnum
+from enum import IntEnum, StrEnum
 from logging import getLogger
 from pathlib import Path
 from typing import Literal, Optional, Sequence, TypeAlias
@@ -26,8 +26,12 @@ _WS_HEADER_FMT = "<BBBHH"  # kind, msg_type, reserved, seq, payload_bytes
 _WS_HEADER_SIZE = struct.calcsize(_WS_HEADER_FMT)
 
 _DOWN_WAV_CHUNK = 4096  # bytes per WebSocket frame for synthesized audio (raw PCM)
-_DOWN_SEGMENT_MILLIS = 2000  # duration of a single START-DATA-END segment in milliseconds
-_DOWN_SEGMENT_STAGGER_MILLIS = _DOWN_SEGMENT_MILLIS // 2  # half interval for the second segment start
+_DOWN_SEGMENT_MILLIS = (
+    2000  # duration of a single START-DATA-END segment in milliseconds
+)
+_DOWN_SEGMENT_STAGGER_MILLIS = (
+    _DOWN_SEGMENT_MILLIS // 2
+)  # half interval for the second segment start
 _LISTEN_AUDIO_TIMEOUT_SECONDS = 10.0
 _DEBUG_RECORDING_ENABLED = os.getenv("DEBUG_RECODING") == "1"
 
@@ -62,8 +66,19 @@ class _ServoOp(IntEnum):
     MOVE_Y = 2
 
 
-ServoMoveCommand: TypeAlias = tuple[Literal["move_x", "move_y"], int, int]
-ServoSleepCommand: TypeAlias = tuple[Literal["sleep"], int]
+class ServoMoveType(StrEnum):
+    MOVE_X = "move_x"
+    MOVE_Y = "move_y"
+
+
+class ServoWaitType(StrEnum):
+    SLEEP = "sleep"
+
+
+ServoMoveCommand: TypeAlias = tuple[
+    Literal["move_x", "move_y"] | ServoMoveType, int, int
+]
+ServoSleepCommand: TypeAlias = tuple[Literal["sleep"] | ServoWaitType, int]
 ServoCommand: TypeAlias = ServoMoveCommand | ServoSleepCommand
 
 
@@ -81,11 +96,15 @@ def _encode_servo_commands(commands: Sequence[ServoCommand]) -> bytes:
     payload.append(len(normalized))
 
     for index, command in enumerate(normalized):
-        name = command[0]
+        name = str(command[0])
         if name == "sleep":
             if len(command) != 2:
-                raise ValueError(f"sleep command at index {index} must be ('sleep', duration_ms)")
-            duration_ms = _ensure_range(int(command[1]), minimum=-32768, maximum=32767, label="sleep duration")
+                raise ValueError(
+                    f"sleep command at index {index} must be ('sleep', duration_ms)"
+                )
+            duration_ms = _ensure_range(
+                int(command[1]), minimum=-32768, maximum=32767, label="sleep duration"
+            )
             payload.append(_ServoOp.SLEEP)
             payload.extend(struct.pack("<h", duration_ms))
             continue
@@ -95,8 +114,12 @@ def _encode_servo_commands(commands: Sequence[ServoCommand]) -> bytes:
                 raise ValueError(
                     f"{name} command at index {index} must be ('{name}', angle, duration_ms)"
                 )
-            angle = _ensure_range(int(command[1]), minimum=-128, maximum=127, label="servo angle")
-            duration_ms = _ensure_range(int(command[2]), minimum=-32768, maximum=32767, label="servo duration")
+            angle = _ensure_range(
+                int(command[1]), minimum=-128, maximum=127, label="servo angle"
+            )
+            duration_ms = _ensure_range(
+                int(command[2]), minimum=-32768, maximum=32767, label="servo duration"
+            )
             payload.append(_ServoOp.MOVE_X if name == "move_x" else _ServoOp.MOVE_Y)
             payload.extend(struct.pack("<bh", angle, duration_ms))
             continue
@@ -104,6 +127,7 @@ def _encode_servo_commands(commands: Sequence[ServoCommand]) -> bytes:
         raise ValueError(f"unsupported servo command at index {index}: {name}")
 
     return bytes(payload)
+
 
 class WsProxy:
     def __init__(
@@ -210,7 +234,10 @@ class WsProxy:
         try:
             await self._send_packet(_WsKind.SERVO_CMD, _WsMsgType.DATA, payload)
         except Exception:
-            if self._pending_servo_wait_targets and self._pending_servo_wait_targets[-1] == target_counter:
+            if (
+                self._pending_servo_wait_targets
+                and self._pending_servo_wait_targets[-1] == target_counter
+            ):
                 self._pending_servo_wait_targets.pop()
             self._servo_sent_counter = previous_counter
             raise
@@ -268,7 +295,9 @@ class WsProxy:
                         continue
 
                     if msg_type == _WsMsgType.DATA:
-                        if not await self._listener.handle_data(self.ws, payload_bytes, payload):
+                        if not await self._listener.handle_data(
+                            self.ws, payload_bytes, payload
+                        ):
                             break
                         continue
 
@@ -348,7 +377,9 @@ class WsProxy:
         payload = struct.pack("<B", int(state_id))
         await self._send_packet(_WsKind.STATE_CMD, _WsMsgType.DATA, payload)
 
-    async def _send_packet(self, kind: _WsKind, msg_type: _WsMsgType, payload: bytes = b"") -> None:
+    async def _send_packet(
+        self, kind: _WsKind, msg_type: _WsMsgType, payload: bytes = b""
+    ) -> None:
         hdr = struct.pack(
             _WS_HEADER_FMT,
             int(kind),
@@ -392,4 +423,6 @@ __all__ = [
     "TimeoutError",
     "EmptyTranscriptError",
     "ServoCommand",
+    "ServoMoveType",
+    "ServoWaitType",
 ]
