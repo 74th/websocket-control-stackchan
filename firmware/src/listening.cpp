@@ -6,7 +6,7 @@
 
 Listening::Listening(WebSocketsClient &ws, StateMachine &sm, int sampleRate)
     : ws_(ws), state_(sm), sample_rate_(sampleRate),
-      chunk_samples_(static_cast<size_t>(sampleRate) / 2),
+      chunk_samples_(static_cast<size_t>(sampleRate) / 8),
       ring_capacity_samples_(static_cast<size_t>(sampleRate) * 2)
 {
 }
