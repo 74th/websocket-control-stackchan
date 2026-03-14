@@ -32,7 +32,7 @@ public:
   void addStateExitEvent(State state, Callback cb);
 
 private:
-  State state_ = Idle;
+  State state_ = Disconnected;
   std::array<std::vector<Callback>, 5> entry_events_{};
   std::array<std::vector<Callback>, 5> exit_events_{};
 };
