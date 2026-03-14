@@ -13,7 +13,7 @@ public:
 
 private:
   void drawForState(StateMachine::State state);
-  static uint16_t colorForState(StateMachine::State state);
+  void drawFace();
 
   StateMachine &state_;
   bool has_prev_state_ = false;
