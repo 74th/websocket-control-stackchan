@@ -14,6 +14,7 @@
 #include "../include/listening.hpp"
 #include "../include/wake_up_word.hpp"
 #include "../include/display.hpp"
+#include "../include/servo.hpp"
 
 //////////////////// 設定 ////////////////////
 const char *WIFI_SSID = WIFI_SSID_H;
@@ -31,6 +32,7 @@ static Speaking speaking(stateMachine);
 static Listening listening(wsClient, stateMachine, SAMPLE_RATE);
 static WakeUpWord wakeUpWord(stateMachine, SAMPLE_RATE);
 static Display display(stateMachine);
+static BodyServo servo;
 
 // Protocol types are defined in include/protocols.hpp
 namespace
@@ -116,6 +118,15 @@ void notifySpeakDone()
   }
 }
 
+void notifyServoDone()
+{
+  const uint8_t payload = 1; // done
+  if (!sendUplinkPacket(MessageKind::ServoDoneEvt, MessageType::DATA, &payload, sizeof(payload)))
+  {
+    log_w("Failed to send ServoDoneEvt");
+  }
+}
+
 bool applyRemoteStateCommand(const uint8_t *body, size_t bodyLen)
 {
   if (body == nullptr || bodyLen < 1)
@@ -143,6 +154,16 @@ bool applyRemoteStateCommand(const uint8_t *body, size_t bodyLen)
     log_w("Unknown remote state: %u", static_cast<unsigned>(body[0]));
     return false;
   }
+}
+
+bool applyServoCommand(const uint8_t *body, size_t bodyLen)
+{
+  if (!servo.enqueueSequence(body, bodyLen))
+  {
+    log_w("Failed to apply servo command");
+    return false;
+  }
+  return true;
 }
 } // namespace
 
@@ -221,6 +242,16 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
         log_w("StateCmd unsupported msgType=%u", static_cast<unsigned>(rx.messageType));
       }
       break;
+    case MessageKind::ServoCmd:
+      if (static_cast<MessageType>(rx.messageType) == MessageType::DATA)
+      {
+        applyServoCommand(body, rx_payload_len);
+      }
+      else
+      {
+        log_w("ServoCmd unsupported msgType=%u", static_cast<unsigned>(rx.messageType));
+      }
+      break;
     default:
       // M5.Display.printf("WS bin kind=%u len=%d\n", (unsigned)rx.kind, (int)length);
       break;
@@ -248,6 +279,10 @@ void setup()
   speaking.init();
   speaking.setSpeakFinishedCallback([]() {
     notifySpeakDone();
+  });
+  servo.init();
+  servo.setCompletionCallback([]() {
+    notifyServoDone();
   });
   wakeUpWord.init();
   wakeUpWord.setWakeWordDetectedCallback([]() {
@@ -304,6 +339,7 @@ void loop()
   M5.update();
   wsClient.loop();
   handleCommunicationTimeout();
+  servo.loop();
 
   StateMachine::State current = stateMachine.getState();
   switch (current)
