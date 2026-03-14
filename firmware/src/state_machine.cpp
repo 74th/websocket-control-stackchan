@@ -1,8 +1,6 @@
 #include <M5Unified.h>
 #include "state_machine.hpp"
 
-namespace
-{
 const char *stateToString(StateMachine::State s)
 {
 	switch (s)
@@ -20,7 +18,6 @@ const char *stateToString(StateMachine::State s)
 	default:
 		return "Unknown";
 	}
-}
 }
 
 void StateMachine::setState(State s)
