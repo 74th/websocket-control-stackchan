@@ -96,11 +96,14 @@ class WhisperServerSpeechToText(SpeechRecognizer):
             raise RuntimeError(f"whisper-server request failed: {exc.reason}") from exc
 
         if self._response_format == "json":
-            payload = json.loads(response_body.decode("utf-8"))
+            payload = _load_json_response_bytes(response_body)
+            if not isinstance(payload, Mapping):
+                return ""
+            payload = cast(Mapping[str, object], payload)
             text = payload.get("text")
             return text.strip() if isinstance(text, str) else ""
 
-        payload = json.loads(response_body.decode("utf-8"))
+        payload = _load_json_response_bytes(response_body)
         return _load_transcript_from_verbose_json(payload)
 
 
@@ -116,6 +119,13 @@ def _normalize_language(language_code: str) -> str:
     if not language_code:
         return ""
     return language_code.split("-", 1)[0].lower()
+
+
+def _load_json_response_bytes(response_body: bytes) -> object:
+    response_text = response_body.decode("utf-8", errors="replace")
+    if "\ufffd" in response_text:
+        logger.warning("whisper-server JSON output contains invalid UTF-8 bytes")
+    return json.loads(response_text)
 
 
 def _load_transcript_from_verbose_json(payload: object) -> str:

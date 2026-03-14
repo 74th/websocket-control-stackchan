@@ -165,7 +165,14 @@ def _normalize_transcript(text: str) -> str:
 
 
 def _load_transcript_from_json(path: Path) -> str:
-    data = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        raw_bytes = path.read_bytes()
+        text = raw_bytes.decode("utf-8", errors="replace")
+        if "\ufffd" in text:
+            logger.warning("whisper.cpp JSON output contains invalid UTF-8 bytes")
+        data = json.loads(text)
+    except (json.JSONDecodeError, OSError) as exc:
+        raise RuntimeError(f"Failed to read whisper.cpp JSON output: {exc}") from exc
     transcription = data.get("transcription")
     if not isinstance(transcription, list):
         return ""
