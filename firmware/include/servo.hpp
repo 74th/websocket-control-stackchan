@@ -8,10 +8,10 @@
 
 #include "protocols.hpp"
 
-class AsyncServo
+class BodyServo
 {
 public:
-  AsyncServo() = default;
+  BodyServo() = default;
 
   void init();
   void loop();

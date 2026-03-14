@@ -32,7 +32,7 @@ static Speaking speaking(stateMachine);
 static Listening listening(wsClient, stateMachine, SAMPLE_RATE);
 static WakeUpWord wakeUpWord(stateMachine, SAMPLE_RATE);
 static Display display(stateMachine);
-static AsyncServo servo;
+static BodyServo servo;
 
 // Protocol types are defined in include/protocols.hpp
 namespace

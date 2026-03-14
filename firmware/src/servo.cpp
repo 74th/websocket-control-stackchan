@@ -33,7 +33,7 @@ int16_t readInt16Le(const uint8_t *src)
 }
 } // namespace
 
-void AsyncServo::init()
+void BodyServo::init()
 {
   if (!ensureAttached())
   {
@@ -45,7 +45,7 @@ void AsyncServo::init()
   axis_y_.servo.write(axis_y_.current_degree);
 }
 
-void AsyncServo::loop()
+void BodyServo::loop()
 {
   if (!attached_)
   {
@@ -96,7 +96,7 @@ void AsyncServo::loop()
   }
 }
 
-void AsyncServo::resetSequence()
+void BodyServo::resetSequence()
 {
   steps_.clear();
   current_step_index_ = 0;
@@ -107,7 +107,7 @@ void AsyncServo::resetSequence()
   axis_y_.moving = false;
 }
 
-bool AsyncServo::enqueueSequence(const uint8_t *payload, size_t payload_len)
+bool BodyServo::enqueueSequence(const uint8_t *payload, size_t payload_len)
 {
   if (!ensureAttached())
   {
@@ -189,17 +189,17 @@ bool AsyncServo::enqueueSequence(const uint8_t *payload, size_t payload_len)
   return true;
 }
 
-bool AsyncServo::isBusy() const
+bool BodyServo::isBusy() const
 {
   return sequence_active_ || axis_x_.moving || axis_y_.moving;
 }
 
-void AsyncServo::setCompletionCallback(std::function<void()> cb)
+void BodyServo::setCompletionCallback(std::function<void()> cb)
 {
   on_complete_ = std::move(cb);
 }
 
-bool AsyncServo::ensureAttached()
+bool BodyServo::ensureAttached()
 {
   if (attached_)
   {
@@ -215,7 +215,7 @@ bool AsyncServo::ensureAttached()
   return attached_;
 }
 
-void AsyncServo::updateAxis(AxisMotion &axis, uint32_t now)
+void BodyServo::updateAxis(AxisMotion &axis, uint32_t now)
 {
   if (!axis.moving)
   {
@@ -243,7 +243,7 @@ void AsyncServo::updateAxis(AxisMotion &axis, uint32_t now)
   axis.last_update_ms = now;
 }
 
-void AsyncServo::startMove(AxisMotion &axis, int8_t degree, int16_t duration_ms)
+void BodyServo::startMove(AxisMotion &axis, int8_t degree, int16_t duration_ms)
 {
   axis.target_degree = clampDegree(degree);
   axis.start_degree = axis.current_degree;
@@ -262,7 +262,7 @@ void AsyncServo::startMove(AxisMotion &axis, int8_t degree, int16_t duration_ms)
   axis.moving = true;
 }
 
-void AsyncServo::startCurrentStep(uint32_t now)
+void BodyServo::startCurrentStep(uint32_t now)
 {
   if (!sequence_active_ || current_step_index_ >= steps_.size())
   {
@@ -288,7 +288,7 @@ void AsyncServo::startCurrentStep(uint32_t now)
   }
 }
 
-void AsyncServo::advanceStep()
+void BodyServo::advanceStep()
 {
   if (!sequence_active_)
   {
@@ -303,7 +303,7 @@ void AsyncServo::advanceStep()
   }
 }
 
-void AsyncServo::completeSequence()
+void BodyServo::completeSequence()
 {
   steps_.clear();
   current_step_index_ = 0;
