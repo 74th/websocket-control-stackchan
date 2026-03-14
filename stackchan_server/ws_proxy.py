@@ -8,7 +8,7 @@ from contextlib import suppress
 from enum import IntEnum, StrEnum
 from logging import getLogger
 from pathlib import Path
-from typing import Literal, Optional, Sequence, TypeAlias
+from typing import Literal, Optional, Sequence, TypeAlias, cast
 
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -96,35 +96,46 @@ def _encode_servo_commands(commands: Sequence[ServoCommand]) -> bytes:
     payload.append(len(normalized))
 
     for index, command in enumerate(normalized):
-        name = str(command[0])
-        if name == "sleep":
-            if len(command) != 2:
+        if len(command) == 2:
+            sleep_command = cast(ServoSleepCommand, command)
+            name, raw_duration_ms = sleep_command
+            name = str(name)
+            if name != "sleep":
                 raise ValueError(
-                    f"sleep command at index {index} must be ('sleep', duration_ms)"
+                    f"unsupported servo command at index {index}: {name}"
                 )
             duration_ms = _ensure_range(
-                int(command[1]), minimum=-32768, maximum=32767, label="sleep duration"
+                int(raw_duration_ms),
+                minimum=-32768,
+                maximum=32767,
+                label="sleep duration",
             )
             payload.append(_ServoOp.SLEEP)
             payload.extend(struct.pack("<h", duration_ms))
             continue
 
-        if name in ("move_x", "move_y"):
-            if len(command) != 3:
+        if len(command) == 3:
+            move_command = cast(ServoMoveCommand, command)
+            name, raw_angle, raw_duration_ms = move_command
+            name = str(name)
+            if name not in ("move_x", "move_y"):
                 raise ValueError(
-                    f"{name} command at index {index} must be ('{name}', angle, duration_ms)"
+                    f"unsupported servo command at index {index}: {name}"
                 )
             angle = _ensure_range(
-                int(command[1]), minimum=-128, maximum=127, label="servo angle"
+                int(raw_angle), minimum=-128, maximum=127, label="servo angle"
             )
             duration_ms = _ensure_range(
-                int(command[2]), minimum=-32768, maximum=32767, label="servo duration"
+                int(raw_duration_ms),
+                minimum=-32768,
+                maximum=32767,
+                label="servo duration",
             )
             payload.append(_ServoOp.MOVE_X if name == "move_x" else _ServoOp.MOVE_Y)
             payload.extend(struct.pack("<bh", angle, duration_ms))
             continue
 
-        raise ValueError(f"unsupported servo command at index {index}: {name}")
+        raise ValueError(f"unsupported servo command at index {index}: {command}")
 
     return bytes(payload)
 
