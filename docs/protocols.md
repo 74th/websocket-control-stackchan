@@ -2,134 +2,158 @@
 コーディングエージェント向け指示: このディレクトリにはプロトコルのみを記述し、CPP、Pythonの実装コードの例を記述する必要はありません。どんなプロトコルが実装されているか確認するために用います。
 -->
 
-# プロトコル仕様（1 バイト kind / 共通ヘッダ）
+# WebSocket バイナリプロトコル仕様
 
-このドキュメントは、本リポジトリで使われている WebSocket ベースのバイナリプロトコルについて日本語で説明します。CoreS3（ESP32）とサーバー間の送受信で共通のヘッダを使います。
+このドキュメントは、CoreS3 ファームウェアと Python サーバーがやり取りする WebSocket バイナリプロトコルの現行実装をまとめたものです。
 
-## 共通ヘッダ: WsHeader
+## 共通ヘッダ
 
-`include/protocols.hpp` に定義されるヘッダ（packed, LE）:
+共通ヘッダ `WsHeader` は `firmware/include/protocols.hpp` で定義されています。
 
-```cpp
-enum class MessageKind : uint8_t {
-  AudioPcm = 1, // クライアント→サーバ（PCM16LE）
-  AudioWav = 2, // サーバ→クライアント（WAV バイト列）
-  StateCmd = 3, // サーバ→クライアント（状態遷移指示）
-  WakeWordEvt = 4, // クライアント→サーバ（wake word 検知通知）
-  StateEvt = 5, // クライアント→サーバ（現在状態通知）
-  SpeakDoneEvt = 6, // クライアント→サーバ（発話完了通知）
-  ServoCmd = 7, // サーバ→クライアント（サーボ動作シーケンス指示）
-  ServoDoneEvt = 8, // クライアント→サーバ（サーボ動作シーケンス完了通知）
-};
+- packed
+- little-endian
+- 構造: `<B B B H H>`
 
-enum class MessageType : uint8_t {
-  START = 1,
-  DATA = 2,
-  END  = 3,
-};
+| フィールド | 型 | 説明 |
+| --- | --- | --- |
+| `kind` | `uint8` | メッセージ種別 |
+| `messageType` | `uint8` | `1=START`, `2=DATA`, `3=END` |
+| `reserved` | `uint8` | 現在は常に `0` |
+| `seq` | `uint16` | 送信側でインクリメントするシーケンス番号 |
+| `payloadBytes` | `uint16` | ヘッダ直後に続く payload のバイト数 |
 
-struct __attribute__((packed)) WsHeader {
-  uint8_t  kind;         // MessageKind
-  uint8_t  messageType;  // MessageType
-  uint8_t  reserved;     // 0（将来のフラグ用）
-  uint16_t seq;          // シーケンス番号
-  uint16_t payloadBytes; // ヘッダ直後に続くバイト数
-};
-```
+### `kind` 一覧
 
-- バイトオーダー: リトルエンディアン。
-- `seq`: 送信側がインクリメント。整合チェックに使用。
-- `payloadBytes`: ヘッダ直後に続く生データ長（最大 65535）。
+| kind | 名前 | 方向 | 用途 |
+| --- | --- | --- | --- |
+| `1` | `AudioPcm` | CoreS3 → Server | マイク音声 PCM ストリーム |
+| `2` | `AudioWav` | Server → CoreS3 | TTS 音声 PCM ストリーム |
+| `3` | `StateCmd` | Server → CoreS3 | 状態遷移指示 |
+| `4` | `WakeWordEvt` | CoreS3 → Server | ウェイクワード検出通知 |
+| `5` | `StateEvt` | CoreS3 → Server | 現在状態通知 |
+| `6` | `SpeakDoneEvt` | CoreS3 → Server | 音声再生完了通知 |
+| `7` | `ServoCmd` | Server → CoreS3 | サーボ動作シーケンス指示 |
+| `8` | `ServoDoneEvt` | CoreS3 → Server | サーボ動作完了通知 |
 
-### Uplink: kind = AudioPcm (1)
+## `AudioPcm` (`kind=1`)
 
-- 方向: クライアント -> サーバ
-- フォーマット: PCM16LE モノラル、サンプルレート固定 16 kHz（チャンネル数 1）。
-- メッセージの流れ: START (通常 payload 0) → DATA 複数回 → END (payload 0 または残りを含む)。
-- サーバー側は固定パラメータ（16 kHz / ch=1）として WAV に保存し、STT に渡す。
+- 方向: CoreS3 → Server
+- フォーマット: PCM16LE / 16kHz / 1ch
+- シーケンス: `START` → `DATA` 複数回 → `END`
+- `START` payload: なし
+- `DATA` payload: PCM16LE 生データ
+- `END` payload: 現行ファームウェアではなし
 
-### Downlink: kind = AudioWav (2)
+### 現行実装メモ
 
-- 方向: サーバ -> クライアント
-- コンテンツ: PCM16LE を「総サイズなし」でストリーミング分割送信。
-- メッセージの流れ:
-  - START: payload は `<uint32 sample_rate><uint16 channels>`。
-  - DATA: payload に PCM データチャンク（サイズは適宜分割）。
-  - END: payload 0。クライアントは受信完了として再生を開始する。
-- クライアントは START でバッファを初期化し、DATA を順次 append、END で再生。seq で欠損検知は可能（TCP 前提なら警告のみで継続も可）。
+- CoreS3 はマイクを 256 サンプルずつ読み取り、リングバッファに蓄積します。
+- `DATA` は `2000 samples` ごとに送信されます。
+  - 1 chunk = `2000 samples × 2 bytes = 4000 bytes`
+  - 時間長は約 `125 ms`
+- 無音判定は平均絶対振幅 `<= 200` が 3 秒継続したときに発火します。
+- 停止時は未送信サンプルを `DATA` で flush してから `END` を送ります。
 
-### Downlink: kind = StateCmd (3)
+## `AudioWav` (`kind=2`)
 
-- 方向: サーバ -> クライアント
-- メッセージ種別: `DATA` のみ使用
+- 方向: Server → CoreS3
+- 名前は `AudioWav` ですが、実際に送っているのは WAV コンテナではなく PCM16LE ストリームです。
+- 1 セグメントの流れは `START` → `DATA` 複数回 → `END` です。
+
+### payload 形式
+
+| messageType | payload |
+| --- | --- |
+| `START` | `<uint32 sample_rate><uint16 channels>` |
+| `DATA` | PCM16LE 生データ |
+| `END` | なし |
+
+### 現行実装メモ
+
+- Server は合成済み PCM を約 2 秒単位でセグメント分割します。
+- 各 `DATA` chunk は既定で `4096 bytes` です。
+- 2 本目のセグメントは約 1 秒後に送信を開始し、その後は 2 秒刻みで続きます。
+- CoreS3 は 3 本の受信バッファを持ち、`END` 到達後に `M5.Speaker.playRaw()` で再生します。
+- `seq` の欠損は検知しますが、TCP 前提のため再送制御は行いません。
+
+## `StateCmd` (`kind=3`)
+
+- 方向: Server → CoreS3
+- `messageType`: `DATA` のみ
 - payload: 1 byte の target state id
-  - `0=Idle`
-  - `1=Listening`
-  - `2=Thinking`
-  - `3=Speaking`
-- 現行運用: uplink の `END` 受信完了直後に `Thinking` を送信。
 
-### Uplink: kind = WakeWordEvt (4)
+| 値 | 状態 |
+| --- | --- |
+| `0` | `Idle` |
+| `1` | `Listening` |
+| `2` | `Thinking` |
+| `3` | `Speaking` |
 
-- 方向: クライアント -> サーバ
-- メッセージ種別: `DATA` のみ使用
-- payload: 1 byte（`1=detected`）
-- 役割: Idle 中に WakeWord を検知したことを通知し、サーバー側の対話セッション開始トリガに使う。
+### 現行実装メモ
 
-### Uplink: kind = StateEvt (5)
+- `proxy.listen()` 開始時に Server が `Listening` を指示します。
+- 音声 uplink の `END` を受けると、Server は `Thinking` を指示します。
+- `proxy.speak()` 完了後、Server は `Idle` を指示します。
 
-- 方向: クライアント -> サーバ
-- メッセージ種別: `DATA` のみ使用
+## `WakeWordEvt` (`kind=4`)
+
+- 方向: CoreS3 → Server
+- `messageType`: `DATA` のみ
+- payload: 1 byte (`1=detected`)
+- `Idle` 中のウェイクワード検出をサーバー側に通知します。
+- REST API の `POST /v1/stackchan/{ip}/wakeword` は、このイベントをサーバー内部で擬似発火させます。
+
+## `StateEvt` (`kind=5`)
+
+- 方向: CoreS3 → Server
+- `messageType`: `DATA` のみ
 - payload: 1 byte の current state id
-  - `0=Idle`
-  - `1=Listening`
-  - `2=Thinking`
-  - `3=Speaking`
-- 役割: サーバー側で状態同期に利用する。
 
-### Uplink: kind = SpeakDoneEvt (6)
+| 値 | 状態 |
+| --- | --- |
+| `0` | `Idle` |
+| `1` | `Listening` |
+| `2` | `Thinking` |
+| `3` | `Speaking` |
 
-- 方向: クライアント -> サーバ
-- メッセージ種別: `DATA` のみ使用
-- payload: 1 byte（`1=done`）
-- 役割: TTS再生が完了したことを通知する。`Idle` 遷移とは独立に扱える。
+- CoreS3 は状態遷移の entry hook で送信します。
+- WebSocket 切断中は `Disconnected` 状態になりますが、切断時は uplink 送信できないため `StateEvt` では通知されません。
 
-### Downlink: kind = ServoCmd (7)
+## `SpeakDoneEvt` (`kind=6`)
 
-- 方向: サーバー -> クライアント
-- メッセージ種別: `DATA` のみ使用
-- payload: 1 つの「サーボ動作シーケンス」をまとめて送る
-  - `<uint8 command_count>`
-  - 続いて `command_count` 個のコマンド
-    - `Sleep (op=0)`: `<uint8 op><int16 duration_ms>`
-    - `MoveX (op=1)`: `<uint8 op><int8 angle><int16 duration_ms>`
-    - `MoveY (op=2)`: `<uint8 op><int8 angle><int16 duration_ms>`
-- ファームウェアは受信後すぐにキューへ積み、`loop()` 内で非同期に順次実行する。
-- 新しい `ServoCmd` を受信した場合、現在のシーケンスは置き換える。
+- 方向: CoreS3 → Server
+- `messageType`: `DATA` のみ
+- payload: 1 byte (`1=done`)
+- CoreS3 側の音声再生完了を通知します。
+- Server はこの通知を待って `proxy.speak()` を完了させます。
 
-### Uplink: kind = ServoDoneEvt (8)
+## `ServoCmd` (`kind=7`)
 
-- 方向: クライアント -> サーバー
-- メッセージ種別: `DATA` のみ使用
-- payload: 1 byte（`1=done`）
-- 役割: 直前に受信した `ServoCmd` のシーケンス全体が完了したことを通知する。
+- 方向: Server → CoreS3
+- `messageType`: `DATA` のみ
+- payload はサーボ動作シーケンス全体です。
 
-### kind の拡張例
+### payload 構造
 
-- AudioPcm (1): 現行の PCM16LE アップリンク
-- AudioWav (2): WAV ダウンリンク
-- StateCmd (3): 状態遷移指示
-- WakeWordEvt (4): wake word 検知通知
-- StateEvt (5): 現在状態通知
-- SpeakDoneEvt (6): 発話完了通知
-- ServoCmd (7): サーボ動作シーケンス指示
-- ServoDoneEvt (8): サーボ動作シーケンス完了通知
+- 先頭 1 byte: `<uint8 command_count>`
+- 続いて `command_count` 個のコマンド
 
-### 簡易バイト例（AudioPcm / DATA）
+| op | 名前 | payload |
+| --- | --- | --- |
+| `0` | `Sleep` | `<uint8 op><int16 duration_ms>` |
+| `1` | `MoveX` | `<uint8 op><int8 angle><int16 duration_ms>` |
+| `2` | `MoveY` | `<uint8 op><int8 angle><int16 duration_ms>` |
 
-- kind: 0x01
-- messageType: DATA (0x02)
-- reserved: 0x00
-- seq: 0x0005 (LE => 0x05 0x00)
-- payloadBytes: 0x4000 (16384 バイトの PCM)
-- body: 16384 バイトの PCM16LE データ
+### 現行実装メモ
+
+- Python 側では 0〜255 個のコマンドをエンコードできます。
+- `angle` は signed 8-bit で送られますが、ファームウェアでは最終的に `0..180` 度へ clamp されます。
+- `duration_ms <= 0` は即時反映になります。
+- 新しい `ServoCmd` を受けると、実行中シーケンスは置き換えられます。
+
+## `ServoDoneEvt` (`kind=8`)
+
+- 方向: CoreS3 → Server
+- `messageType`: `DATA` のみ
+- payload: 1 byte (`1=done`)
+- 直前に受信したサーボシーケンスの完了通知です。
+- Server は `proxy.wait_servo_complete()` でこの完了を待てます。
