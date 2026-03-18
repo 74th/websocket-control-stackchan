@@ -1,98 +1,114 @@
 # AGENTS 概要
 
-本リポジトリの現行実装（`firmware/` と `stackchan_server/`）の役割と、WebSocket バイナリプロトコルをまとめる。
+本リポジトリの現行実装を素早く把握するためのメモです。詳細仕様は `docs/protocols.md` と `docs/rest-api.md` を参照してください。
 
 ## 全体像
-- 音声経路（上り）: CoreS3 マイク → `AudioPcm` で PCM16LE ストリーミング → サーバー受信 → WAV 保存 → Google Cloud Speech-to-Text。
-- 音声経路（下り）: サーバー側で VOICEVOX 合成 → `AudioWav` で PCM 分割送信 → CoreS3 スピーカー再生。
-- 制御: CoreS3 は `StateMachine` で `Idle` / `Listening` / `Thinking` / `Speaking` を遷移。
-- トリガ: `Idle` 中に WakeWord 検出をサーバーへ通知。`Listening` 遷移はサーバーからの `StateCmd` で開始。`Listening` は無音 3 秒で自動終了。
 
-## WebSocket プロトコル（現行）
-- 共通ヘッダ: `WsHeader`（`firmware/include/protocols.hpp`）
-- 構造（packed, little-endian）: `<B B B H H`
-  - `kind` (`uint8`): 1=`AudioPcm`, 2=`AudioWav`, 3=`StateCmd`, 4=`WakeWordEvt`, 5=`StateEvt`, 6=`SpeakDoneEvt`
-  - `messageType` (`uint8`): 1=`START`, 2=`DATA`, 3=`END`
-  - `reserved` (`uint8`): 0
-  - `seq` (`uint16`): 送信側でインクリメント
-  - `payloadBytes` (`uint16`): ヘッダ直後のバイト数
+- CoreS3 側は `firmware/`、Python サーバー側は `stackchan_server/`。
+- 音声 uplink は `AudioPcm`、音声 downlink は `AudioWav`（実体は raw PCM）。
+- サーバーは FastAPI を公開し、WebSocket と REST API の両方を持つ。
+- サーボ制御が追加済みで、WebSocket プロトコルには `ServoCmd` / `ServoDoneEvt` がある。
 
-### Uplink（CoreS3 -> Server, kind=1 AudioPcm）
-- 形式: PCM16LE / 16kHz / 1ch 固定。
-- シーケンス: `START`（payload なし）→ `DATA` 複数回 → `END`（payload なし）。
-- `Listening` は 0.5 秒相当（8000 samples）ごとに `DATA` 送信。終了時に残りバッファを flush。
+## 状態遷移の要点
 
-### Downlink（Server -> CoreS3, kind=2 AudioWav）
-- 実体は WAV コンテナではなく「PCM 本体のストリーム分割」。
-- 1セグメントの流れ:
-  - `START`: payload `<uint32 sample_rate><uint16 channels>`
-  - `DATA`: raw PCM chunk（既定 4096 bytes）
-  - `END`: payload なし
-- サーバーは合成 PCM を約 2 秒単位でセグメント化し、2 本目を 1 秒後に先行開始して連続再生しやすくしている。
+- ファームウェア状態: `Idle`, `Listening`, `Thinking`, `Speaking`, `Disconnected`
+- サーバーから指示できるのは `StateCmd` の `0..3` (`Idle`〜`Speaking`)
+- `Disconnected` はファームウェア内部状態で、WebSocket 切断時に入る
+- `WakeWordEvt` を受けるか、REST API の wakeword 擬似発火で talk session が始まる
 
-### Downlink（Server -> CoreS3, kind=3 StateCmd）
-- `messageType=DATA` 固定、payload は 1 byte の target state id。
-- state id: `0=Idle`, `1=Listening`, `2=Thinking`, `3=Speaking`。
-- 現在は uplink 音声の `END` 受信直後にサーバーが `Thinking` 指示を送る。
+## WebSocket プロトコル要約
 
-### Uplink（CoreS3 -> Server, kind=4 WakeWordEvt）
-- `messageType=DATA` 固定、payload は 1 byte（`1=detected`）。
-- `Idle` 中の WakeWord 検出通知。サーバー側の対話セッション起動トリガに使う。
+- 共通ヘッダ: `WsHeader` (`<B B B H H>`, packed, little-endian)
+- `kind`
+  - `1=AudioPcm`
+  - `2=AudioWav`
+  - `3=StateCmd`
+  - `4=WakeWordEvt`
+  - `5=StateEvt`
+  - `6=SpeakDoneEvt`
+  - `7=ServoCmd`
+  - `8=ServoDoneEvt`
+- `messageType`
+  - `1=START`
+  - `2=DATA`
+  - `3=END`
 
-### Uplink（CoreS3 -> Server, kind=5 StateEvt）
-- `messageType=DATA` 固定、payload は 1 byte の current state id。
-- state id: `0=Idle`, `1=Listening`, `2=Thinking`, `3=Speaking`。
-- サーバーは状態同期に利用する。
+### 現行挙動
 
-### Uplink（CoreS3 -> Server, kind=6 SpeakDoneEvt）
-- `messageType=DATA` 固定、payload は 1 byte（`1=done`）。
-- `Speaking` の再生完了通知。`Idle` とは独立して発話完了を判定できる。
+- `AudioPcm`
+  - PCM16LE / 16kHz / 1ch
+  - `START -> DATA* -> END`
+  - `DATA` は 2000 samples（4000 bytes, 約 125ms）ごと
+  - 無音 3 秒で自動終了
+- `AudioWav`
+  - 名前に反して WAV コンテナではなく PCM ストリーム
+  - `START` payload は `<uint32 sample_rate><uint16 channels>`
+  - `DATA` chunk は既定 4096 bytes
+  - 約 2 秒セグメントで送信し、2 本目は約 1 秒後に先行開始
+- `ServoCmd`
+  - payload: `<uint8 count><commands...>`
+  - op: `0=Sleep`, `1=MoveX`, `2=MoveY`
+  - 新規コマンド受信時は実行中シーケンスを置き換える
 
-## CoreS3 側（`firmware/`）
-- エントリポイント: `firmware/src/main.cpp`
-  - Wi-Fi 接続後、`/ws/stackchan` に接続。
-  - WS 受信で `kind=AudioWav` を `Speaking` に渡す。
-- `WakeUpWord`（`firmware/src/wake_up_word.cpp`）
-  - `Idle` 中に `ESP_SR_M5` へマイク音声を feed。
-  - WakeWord 検出時は `WakeWordEvt` を送信（自動遷移しない）。
-- `Listening`（`firmware/src/listening.cpp`）
-  - 2 秒リングバッファ、マイク読み取り 256 サンプル単位。
-  - `START/DATA/END` を送信。
-  - 無音閾値（平均絶対値 200 以下）が 3 秒続くと自動停止して `Idle` へ戻る。
-  - 送信失敗時も `Idle` へフォールバック。
-- `Thinking`
-  - サーバーからの `StateCmd` を受けて遷移する待機状態。
-  - 自動遷移はせず、`AudioWav START` または次の状態指示で遷移。
-- `Speaking`（`firmware/src/speaking.cpp`）
-  - `AudioWav` の `START` でメタ情報取得、`DATA` 蓄積、`END` で `M5.Speaker.playRaw` 再生。
-  - 再生完了時に `SpeakDoneEvt` を送信し、その後 `Idle` に戻る。
-- `Display`（`firmware/src/display.cpp`）
-  - 状態色のみ表示: `Idle=黒`, `Listening=青`, `Thinking=オレンジ`, `Speaking=緑`。
+## サーバー側 (`stackchan_server/`)
 
-## サーバー側（`stackchan_server/`）
-- FastAPI 本体: `stackchan_server/app.py`
-  - `GET /health`
-  - `WS /ws/stackchan`
-- WS 処理: `stackchan_server/ws_proxy.py`
-  - 受信 `AudioPcm` を蓄積し、`END` 時に `stackchan_server/recordings/rec_ws_*.wav` として保存。
-  - その PCM を Google Cloud Speech-to-Text（`ja-JP`, LINEAR16, 16kHz）で文字起こし。
-  - `get_message_async()` でアプリ層へ認識結果を渡す。
-  - `start_talking(text)` で VOICEVOX（`http://localhost:50021`, speaker=29）合成し、`AudioWav` として分割送信。
+### `stackchan_server/app.py`
 
-## アプリ層（`example_apps/`）
-- `example_apps/echo.py`: 認識結果をそのまま VOICEVOX で復唱。
-- `example_apps/gemini.py`: 認識結果を Gemini チャットに渡し、応答文を VOICEVOX で発話。
-  - いずれも `@app.talk_session` / `proxy.listen()` / `proxy.speak()` を使用。
+- `GET /health`
+- `WS /ws/stackchan`
+- `GET /v1/stackchan`
+- `GET /v1/stackchan/{stackchan_ip}`
+- `POST /v1/stackchan/{stackchan_ip}/wakeword`
+- `POST /v1/stackchan/{stackchan_ip}/speak`
 
-## 依存・周辺
-- VOICEVOX エンジン: ルート `docker-compose.yml` の `voicevox` サービス（`50021:50021`）。
-- Python 依存: `fastapi`, `uvicorn`, `voicevox-client`, `google-cloud-speech`, `google-genai`。
-- 録音保存先: `stackchan_server/recordings/`（自動生成）。
+### `stackchan_server/ws_proxy.py`
 
-## 期待する動作フロー
-1. VOICEVOX を起動（ルートで `docker compose run --rm --service-ports voicevox` など）。
-2. サーバーを起動（例: `uv run uvicorn app.gemini:app.fastapi --host 0.0.0.0 --port 8000`）。
-3. CoreS3 が Wi-Fi/WS 接続後、`Idle` で WakeWord 待機。
-4. WakeWord 検出をサーバーへ通知。サーバーが `Listening` を指示して録音送信開始。無音 3 秒で送信終了。
-5. サーバーが WAV 保存・文字起こしし、アプリ層の応答文を VOICEVOX 合成。
-6. 合成 PCM が `AudioWav` で返送され、CoreS3 が再生して `Idle` に戻る。
+- 接続ごとに `WsProxy` を作成
+- `websocket.client.host` を StackChan の識別子として使う
+- 同一 IP の再接続時は既存接続を置き換える
+- `listen()` は `Listening` 指示後、音声 uplink 完了を待つ
+- `speak()` は TTS downlink 送信後、`SpeakDoneEvt` を待つ
+- `move_servo()` / `wait_servo_complete()` を公開
+
+### 音声認識 / 音声合成
+
+- 既定 STT: `GoogleCloudSpeechToText`（ストリーミング認識）
+- 既定 TTS: `VoiceVoxSpeechSynthesizer`
+- `example_apps/echo.py` / `echo_with_move.py` は `STACKCHAN_WHISPER_MODEL` があると `whisper.cpp` を使う
+- `DEBUG_RECODING=1` のときのみ録音 WAV と TTS WAV を `stackchan_server/recordings/` に保存する
+  - 実装上この変数名は typo のまま
+
+## ファームウェア側 (`firmware/`)
+
+- `src/main.cpp`
+  - Wi-Fi 接続後、`/ws/stackchan` に接続
+  - `AudioWav`, `StateCmd`, `ServoCmd` を受信処理
+  - 通信が 60 秒止まると `Thinking` / `Speaking` から `Idle` に戻す
+- `src/listening.cpp`
+  - マイク読み取り 256 サンプル単位
+  - 2 秒リングバッファ
+  - 無音 3 秒で停止
+- `src/speaking.cpp`
+  - 3 本バッファで TTS セグメント受信
+  - `END` 後に `M5.Speaker.playRaw()` で再生
+  - 再生完了時に `SpeakDoneEvt`
+- `src/servo.cpp`
+  - `ServoCmd` を非同期実行
+  - `MoveX`, `MoveY`, `Sleep` を順次処理
+  - 完了時に `ServoDoneEvt`
+- `src/display.cpp`
+  - `Idle=濃いグレー`, `Listening=青`, `Thinking=オレンジ`, `Speaking=緑`, `Disconnected=赤`
+
+## サンプルアプリ
+
+- `example_apps/echo.py`: 音声をそのまま復唱
+- `example_apps/echo_with_move.py`: 復唱 + サーボ動作
+- `example_apps/gemini.py`: Gemini 応答を発話
+
+## 起動時の目安
+
+1. VOICEVOX を起動
+2. FastAPI サーバーを `example_apps.*:app.fastapi` で起動
+3. CoreS3 が WebSocket 接続
+4. ウェイクワードまたは REST API の wakeword 呼び出しで対話開始
+5. 必要に応じて発話・サーボ制御を返送
