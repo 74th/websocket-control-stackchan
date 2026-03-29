@@ -1,6 +1,6 @@
 # AGENTS 概要
 
-本リポジトリの現行実装を素早く把握するためのメモです。詳細仕様は `docs/protocols.md` と `docs/rest-api.md` を参照してください。
+本リポジトリの現行実装を素早く把握するためのメモです。詳細仕様は `docs/websocket_protocols_ja.md` と `docs/rest_api_ja.md` を参照してください。
 
 ## 全体像
 
