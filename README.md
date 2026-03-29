@@ -66,17 +66,12 @@ async def talk_session(proxy: WsProxy):
             await proxy.speak(resp.text)
 ```
 
+## セットアップ
 
+以下を確認ください。
 
-## Lint / Type Check
+[docs/setup_ja.md](docs/setup_ja.md)
 
-`stackchan_server/` と `example_apps/` を対象に、`uv` で Ruff と ty を実行できます。
-
-```bash
-uv sync --group dev --group example-gemini
-uv run ruff check stackchan_server example_apps
-uv run ty check stackchan_server example_apps
-```
 
 ## 現在開発中の環境
 
@@ -89,49 +84,3 @@ uv run ty check stackchan_server example_apps
 - ファームウェア [firmware/](./firmware/)
 - Pythonサーバのライブラリ [stackchan_server/](./stackchan_server/)
 - サンプルアプリケーション [example_apps/](./example_apps/)
-
-## 必要なもの
-
-- Google Cloudのプロジェクトとサービスアカウント
-- Dockerエンジン
-- Python 3.13 以上
-  - [uv](https://docs.astral.sh/uv/)
-- PlatformIO
-
-## セットアップ
-
-> [!WARNING]
-> あくまで最低限のことしか書いていません。各自で環境構築を行ってください。
-
-WiFi設定、接続先サーバを[firmware/include/config.h](firmware/include/config.h)に記述します。
-
-```h
-#define WIFI_SSID_H "__SSID__"
-#define WIFI_PASSWORD_H "__PASSWORD__"
-
-// WebSocket サーバ設定
-#define SERVER_HOST_H "192.168.1.179"   // 例: サーバのIP
-#define SERVER_PORT_H 8000              // 例: FastAPIのポート
-#define SERVER_PATH_H "/ws/stackchan"      // WebSocketパス
-```
-
-StackChanのファームウェアをPlatformIOでビルドして、CoreS3に書き込みます。
-
-PC上で、Google Cloudのログインをしてください。
-
-```bash
-gcloud auth application-default login
-```
-
-VOICEVOXをdockerで起動します。
-
-```bash
-docker compose run --rm --service-ports voicevox
-```
-
-Pythonサーバを起動します。
-
-```bash
-uv sync
-uv run uvicorn app.gemini:app.fastapi --host 0.0.0.0 --port 8000
-```

@@ -77,7 +77,7 @@ M5Stack Basic、M5Stack Core2は対応していません。
 
 以下のページを参照して、ファームウェアの設定とビルドを行ってください。
 
-TODO [./firmware_ja.md](./firmware_ja.md)
+[./firmware_ja.md](./firmware_ja.md)
 
 ## VOICEVOXのDockerコンテナの実行
 
@@ -86,22 +86,33 @@ VOICEVOXはDockerイメージが提供されているため、Docker環境を構
 
 Dockerがインストールされていない場合は以下のページヲ参照して、Dockerをインストールしてください。
 
-https://www.docker.com/ja-jp/get-started/
+> 今すぐ始める | Docker
+>
+> https://www.docker.com/ja-jp/get-started/
 
 VOICEVOXのDockerコンテナの実行方法は、以下のページを参照してください。
 
-TODO
+```
+docker compose run --rm --service-ports voicevox
+```
 
 ## Python開発環境の構築
 
 このリポジトリでは、WebソケットサーバをPythonで実装しています。
-Pythonの環境構築の方法は以下のページを参照してください。
+Pythonの環境構築の方法は、パッケージマネージャuvのページを参照してください。
 
-TODO
+> Installation | uv
+>
+> https://docs.astral.sh/uv/getting-started/installation/
 
 ## サンプルアプリケーションの実行
 
-TODO
+uv でPythonサーバを起動します。
+
+```bash
+uv sync
+uv run uvicorn app.gemini:app.fastapi --host 0.0.0.0 --port 8000
+```
 
 ## アプリケーションの設定
 
