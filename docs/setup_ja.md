@@ -75,15 +75,27 @@ M5Stack Basic、M5Stack Core2は対応していません。
 
 ## ファームウェアの設定とビルド
 
-[./firmware_ja.md](./firmware_ja.md) を参照して、ファームウェアの設定とビルドを行ってください。
+以下のページを参照して、ファームウェアの設定とビルドを行ってください。
 
-## Docker環境の構築
+TODO [./firmware_ja.md](./firmware_ja.md)
 
-標準のサーバ
+## VOICEVOXのDockerコンテナの実行
+
+標準では、音声合成にVOICEVOXを利用します。
+VOICEVOXはDockerイメージが提供されているため、Docker環境を構築して実行します。
+
+Dockerがインストールされていない場合は以下のページヲ参照して、Dockerをインストールしてください。
+
+https://www.docker.com/ja-jp/get-started/
+
+VOICEVOXのDockerコンテナの実行方法は、以下のページを参照してください。
 
 TODO
 
 ## Python開発環境の構築
+
+このリポジトリでは、WebソケットサーバをPythonで実装しています。
+Pythonの環境構築の方法は以下のページを参照してください。
 
 TODO
 
@@ -100,3 +112,5 @@ TODO
 TODO
 
 ## Docker環境で実行する
+
+TODO
