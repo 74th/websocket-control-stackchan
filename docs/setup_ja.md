@@ -67,4 +67,8 @@ M5Stack Basic、M5Stack Core2は対応していません。
 
 [./google_cloud_ja.md](./google_cloud_ja.md) を参照してください。
 
-## PC環境の構築
+## ファームウェアビルド環境の構築
+
+ファームウェアのビルドには、PlatformIOを利用します。
+
+[./platformio_ja.md](./platformio_ja.md) を参照して、環境を構築してください。
