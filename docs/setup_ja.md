@@ -72,3 +72,31 @@ M5Stack Basic、M5Stack Core2は対応していません。
 ファームウェアのビルドには、PlatformIOを利用します。
 
 [./platformio_ja.md](./platformio_ja.md) を参照して、環境を構築してください。
+
+## ファームウェアの設定とビルド
+
+[./firmware_ja.md](./firmware_ja.md) を参照して、ファームウェアの設定とビルドを行ってください。
+
+## Docker環境の構築
+
+標準のサーバ
+
+TODO
+
+## Python開発環境の構築
+
+TODO
+
+## サンプルアプリケーションの実行
+
+TODO
+
+## アプリケーションの設定
+
+TODO
+
+## Claude Agent SDKによるエージェントの構築と実行
+
+TODO
+
+## Docker環境で実行する

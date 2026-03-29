@@ -10,6 +10,8 @@
 
 ## 手順
 
+初期構築手順は以下の通りです。
+
 1. Googleアカウントを作成する
 1. Google Cloudのプロジェクトを作成する
 2. 利用するサービスを有効化する
@@ -17,6 +19,11 @@
 4. サービスアカウントを作成する
 5. サービスアカウントに、必要なロールを付与する
 6. サービスアカウントの秘密鍵を作成し、ダウンロードする
+
+以下の操作もできるようにしておくとよいでしょう。
+
+1. 現在の費用を確認する
+2. 予算を設定し、一定以上の費用が発生しそうな場合に通知するようにする（自動で停止はしません）
 
 ## Googleアカウントを作成する
 
@@ -186,3 +193,47 @@ Select a role から以下のロールを選択して追加します。
 
 すると、秘密鍵が作成され、JSONファイルがダウンロードされます。
 このJSONファイルを安全に保管しておいてください。
+
+## 現在の費用を確認する
+
+現在の使用状況を確認するには、検索欄に「Billing Accounts」と入力して、Billingのページに遷移します。
+
+![alt text](image/google_cloud/show_billing_1.png)
+
+日毎の費用が表示されます。
+
+CostはAPI利用料による費用ですが、Savingsは無料利用枠などによる割引額を表しています。
+Total costが実際に請求される費用です。
+
+より詳細にみるには、下部の「View details on Reports」をクリックします。
+すると、以下のように項目別の費用が表示されます。
+
+![alt text](image/google_cloud/show_billing_3.png)
+
+## 予算を設定し、一定以上の費用が発生しそうな場合に通知するようにする（自動で停止はしません）
+
+Google Cloudでは、一定の金額を超えたら自動で停止するような仕組みはありません。
+しかし、一定の金額を超えたらメールで通知するようにしておくことができます。
+
+検索欄に「Budgets & alerts」と入力して、Budgets & alertsのページに遷移します。
+
+![alt text](image/google_cloud/budget_alert_1.png)
+
+予算の作成（Create Budget）をクリックします。
+
+![alt text](image/google_cloud/budget_alert_2.png)
+
+名前、時刻レンジ、対象のプロジェクトを設定します。
+
+![alt text](image/google_cloud/budget_alert_3.png)
+
+次に進み、予算とする金額を設定します。
+
+![alt text](image/google_cloud/budget_alert_4.png)
+
+最後に通知するタイミング（予算の何%に達したら通知するか）を設定します。
+
+![alt text](image/google_cloud/budget_alert_5.png)
+
+これで、FInishをクリックします。
+これで、プロジェクトを作成したメールアドレスに対して、予算超過で通知が行くようになります。
