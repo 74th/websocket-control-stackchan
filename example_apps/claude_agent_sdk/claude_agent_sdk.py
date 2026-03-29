@@ -15,7 +15,14 @@ from claude_agent_sdk import (
 from pydantic import BaseModel
 
 from stackchan_server.app import StackChanApp
-from stackchan_server.ws_proxy import WsProxy, EmptyTranscriptError
+from stackchan_server.speech_recognition.whisper_cpp import WhisperCppSpeechToText
+from stackchan_server.speech_synthesis.voicevox import VoiceVoxSpeechSynthesizer
+from stackchan_server.ws_proxy import (
+    EmptyTranscriptError,
+    ServoMoveType,
+    ServoWaitType,
+    WsProxy,
+)
 
 logger = getLogger(__name__)
 logger.addHandler(StreamHandler())
@@ -23,7 +30,19 @@ logger.setLevel("DEBUG")
 
 WORKSPACE_DIR = pathlib.Path(__file__).parent / "workspace"
 
-app = StackChanApp()
+
+def _create_app() -> StackChanApp:
+    whisper_model = os.getenv("STACKCHAN_WHISPER_MODEL")
+    if whisper_model:
+        return StackChanApp(
+            speech_recognizer=WhisperCppSpeechToText(
+                model_path=whisper_model,
+            ),
+            speech_synthesizer=VoiceVoxSpeechSynthesizer(),
+        )
+    return StackChanApp()
+
+app = _create_app()
 
 model = "claude-haiku-4-5-20251001"
 if os.environ.get("CLAUDE_CODE_USE_VERTEX") == "1":
@@ -87,13 +106,26 @@ async def setup(proxy: WsProxy):
 async def talk_session(proxy: WsProxy):
     async with client:
         while True:
+            await proxy.move_servo([(ServoMoveType.MOVE_Y, 80, 100)])
+
             try:
                 text = await proxy.listen()
             except EmptyTranscriptError:
+                await proxy.move_servo([(ServoMoveType.MOVE_Y, 90, 100)])
                 logger.info("音声が聞き取れませんでした")
                 return
 
             logger.info("Human: %s", text)
+
+            await proxy.move_servo([
+                (ServoMoveType.MOVE_Y, 100, 100),
+                (ServoWaitType.SLEEP, 200),
+                (ServoMoveType.MOVE_Y, 90, 100),
+                (ServoWaitType.SLEEP, 200),
+                (ServoMoveType.MOVE_Y, 100, 100),
+                (ServoWaitType.SLEEP, 200),
+                (ServoMoveType.MOVE_Y, 90, 100),
+            ])
 
             # AI応答の取得
             await client.query(text)
