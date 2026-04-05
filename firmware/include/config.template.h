@@ -7,14 +7,14 @@
 #define SERVER_PATH_H "/ws/stackchan"  // WebSocket path
 
 // -- using SG90 --
-// #define USE_SERVO_SG90 1
+#define USE_SERVO_SG90 1
 
 // CoreS3 PortA
 // #define SERVO_SG90_X_PIN 1
 // #define SERVO_SG90_Y_PIN 2
 // CoreS3 PortC
-// #define SERVO_SG90_X_PIN 18
-// #define SERVO_SG90_Y_PIN 17
+#define SERVO_SG90_X_PIN 18
+#define SERVO_SG90_Y_PIN 17
 // m5pantilt
 // #define SERVO_SG90_X_PIN 7
 // #define SERVO_SG90_Y_PIN 6
