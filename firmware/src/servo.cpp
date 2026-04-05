@@ -1,19 +1,42 @@
 #include "servo.hpp"
+#include "config.h"
 
 #include <M5Unified.h>
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <utility>
 
 namespace
 {
-constexpr int kServoXPin = 6;
-constexpr int kServoYPin = 7;
+#if defined(USE_SERVO_SG90) && defined(USE_SERVO_SCS0009)
+#error "Define only one of USE_SERVO_SG90 or USE_SERVO_SCS0009"
+#endif
+
+#if !defined(USE_SERVO_SG90) && !defined(USE_SERVO_SCS0009)
+#error "Define one of USE_SERVO_SG90 or USE_SERVO_SCS0009 in config.h"
+#endif
+
+#if defined(USE_SERVO_SG90)
+constexpr int kServoXPin = SERVO_SG90_X_PIN;
+constexpr int kServoYPin = SERVO_SG90_Y_PIN;
 constexpr int kServoPulseMinUs = 500;
 constexpr int kServoPulseMaxUs = 2400;
 constexpr int kServoFrequencyHz = 50;
 constexpr uint32_t kEasingDivisionMs = 10;
+#endif
+
+#if defined(USE_SERVO_SCS0009)
+constexpr uint8_t kServoXId = SCS0009_X_ID;
+constexpr uint8_t kServoYId = SCS0009_Y_ID;
+constexpr bool kServoXInverted = SCS0009_X_REVERSED != 0;
+constexpr bool kServoYInverted = SCS0009_Y_REVERSED != 0;
+constexpr uint32_t kScsBaudRate = 1000000;
+constexpr uint16_t kScsPositionMin = 0;
+constexpr uint16_t kScsPositionMax = 1023;
+constexpr uint16_t kScsDefaultSpeed = 200;
+#endif
 
 int16_t clampDegree(int16_t degree)
 {
@@ -31,6 +54,21 @@ int16_t readInt16Le(const uint8_t *src)
   memcpy(&value, src, sizeof(value));
   return value;
 }
+
+#if defined(USE_SERVO_SCS0009)
+uint16_t degreeToScsPosition(int16_t degree, bool inverted)
+{
+  const int16_t normalized_degree = clampDegree(degree);
+  const int16_t mapped_degree = inverted ? static_cast<int16_t>(180 - normalized_degree) : normalized_degree;
+  const long position = map(mapped_degree, 0, 180, kScsPositionMin, kScsPositionMax);
+  return static_cast<uint16_t>(std::clamp<long>(position, kScsPositionMin, kScsPositionMax));
+}
+
+uint16_t clampScsDuration(int16_t duration_ms)
+{
+  return static_cast<uint16_t>(std::min<uint32_t>(clampDuration(duration_ms), std::numeric_limits<uint16_t>::max()));
+}
+#endif
 } // namespace
 
 void BodyServo::init()
@@ -41,8 +79,15 @@ void BodyServo::init()
     return;
   }
 
+#if defined(USE_SERVO_SG90)
   axis_x_.servo.write(axis_x_.current_degree);
   axis_y_.servo.write(axis_y_.current_degree);
+#elif defined(USE_SERVO_SCS0009)
+  sc_.PWMMode(axis_x_.scs_id, false);
+  sc_.PWMMode(axis_y_.scs_id, false);
+  sc_.WritePos(axis_x_.scs_id, degreeToScsPosition(axis_x_.current_degree, axis_x_.inverted), 0, kScsDefaultSpeed);
+  sc_.WritePos(axis_y_.scs_id, degreeToScsPosition(axis_y_.current_degree, axis_y_.inverted), 0, kScsDefaultSpeed);
+#endif
 }
 
 void BodyServo::loop()
@@ -206,12 +251,24 @@ bool BodyServo::ensureAttached()
     return true;
   }
 
+#if defined(USE_SERVO_SG90)
   axis_x_.servo.setPeriodHertz(kServoFrequencyHz);
   axis_y_.servo.setPeriodHertz(kServoFrequencyHz);
 
   const bool x_ok = axis_x_.servo.attach(kServoXPin, kServoPulseMinUs, kServoPulseMaxUs) > 0;
   const bool y_ok = axis_y_.servo.attach(kServoYPin, kServoPulseMinUs, kServoPulseMaxUs) > 0;
   attached_ = x_ok && y_ok;
+#elif defined(USE_SERVO_SCS0009)
+  axis_x_.scs_id = kServoXId;
+  axis_x_.inverted = kServoXInverted;
+  axis_y_.scs_id = kServoYId;
+  axis_y_.inverted = kServoYInverted;
+
+  Serial2.begin(kScsBaudRate, SERIAL_8N1, SCS_SRIAL_RX_PIN, SCS_SRIAL_TX_PIN);
+  sc_.pSerial = &Serial2;
+  attached_ = true;
+#endif
+
   return attached_;
 }
 
@@ -222,6 +279,7 @@ void BodyServo::updateAxis(AxisMotion &axis, uint32_t now)
     return;
   }
 
+#if defined(USE_SERVO_SG90)
   const uint32_t elapsed = now - axis.move_start_ms;
   if ((now - axis.last_update_ms) < kEasingDivisionMs && elapsed < axis.move_duration_ms)
   {
@@ -241,6 +299,17 @@ void BodyServo::updateAxis(AxisMotion &axis, uint32_t now)
   axis.current_degree = axis.start_degree + static_cast<int16_t>((axis.target_degree - axis.start_degree) * progress);
   axis.servo.write(axis.current_degree);
   axis.last_update_ms = now;
+#elif defined(USE_SERVO_SCS0009)
+  const uint32_t elapsed = now - axis.move_start_ms;
+  if (elapsed < axis.move_duration_ms)
+  {
+    return;
+  }
+
+  axis.current_degree = axis.target_degree;
+  axis.last_update_ms = now;
+  axis.moving = false;
+#endif
 }
 
 void BodyServo::startMove(AxisMotion &axis, int8_t degree, int16_t duration_ms)
@@ -254,12 +323,21 @@ void BodyServo::startMove(AxisMotion &axis, int8_t degree, int16_t duration_ms)
   if (axis.move_duration_ms == 0 || axis.start_degree == axis.target_degree)
   {
     axis.current_degree = axis.target_degree;
+#if defined(USE_SERVO_SG90)
     axis.servo.write(axis.current_degree);
+#elif defined(USE_SERVO_SCS0009)
+  sc_.WritePos(axis.scs_id, degreeToScsPosition(axis.current_degree, axis.inverted), 0, kScsDefaultSpeed);
+#endif
     axis.moving = false;
     return;
   }
 
+#if defined(USE_SERVO_SG90)
   axis.moving = true;
+#elif defined(USE_SERVO_SCS0009)
+  sc_.WritePos(axis.scs_id, degreeToScsPosition(axis.target_degree, axis.inverted), clampScsDuration(duration_ms), 0);
+  axis.moving = true;
+#endif
 }
 
 void BodyServo::startCurrentStep(uint32_t now)

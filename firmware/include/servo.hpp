@@ -1,12 +1,20 @@
 #pragma once
 
-#include <ESP32Servo.h>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <vector>
 
+#include "config.h"
 #include "protocols.hpp"
+
+#if defined(USE_SERVO_SG90)
+#include <ESP32Servo.h>
+#endif
+
+#if defined(USE_SERVO_SCS0009)
+#include <SCServo.h>
+#endif
 
 class BodyServo
 {
@@ -24,7 +32,13 @@ public:
 private:
   struct AxisMotion
   {
+#if defined(USE_SERVO_SG90)
     Servo servo;
+#endif
+#if defined(USE_SERVO_SCS0009)
+    uint8_t scs_id = 0;
+  bool inverted = false;
+#endif
     int16_t current_degree = 90;
     int16_t start_degree = 90;
     int16_t target_degree = 90;
@@ -50,6 +64,9 @@ private:
 
   AxisMotion axis_x_{};
   AxisMotion axis_y_{};
+#if defined(USE_SERVO_SCS0009)
+  SCSCL sc_{};
+#endif
   bool attached_ = false;
 
   std::vector<Step> steps_{};
