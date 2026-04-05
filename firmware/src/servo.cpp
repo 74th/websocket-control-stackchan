@@ -21,6 +21,8 @@ namespace
 #if defined(USE_SERVO_SG90)
 constexpr int kServoXPin = SERVO_SG90_X_PIN;
 constexpr int kServoYPin = SERVO_SG90_Y_PIN;
+constexpr int16_t kServoXCenterOffset = SERVO_SG90_X_CENTER_OFFSET;
+constexpr int16_t kServoYCenterOffset = SERVO_SG90_Y_CENTER_OFFSET;
 constexpr int kServoPulseMinUs = 500;
 constexpr int kServoPulseMaxUs = 2400;
 constexpr int kServoFrequencyHz = 50;
@@ -30,8 +32,10 @@ constexpr uint32_t kEasingDivisionMs = 10;
 #if defined(USE_SERVO_SCS0009)
 constexpr uint8_t kServoXId = SCS0009_X_ID;
 constexpr uint8_t kServoYId = SCS0009_Y_ID;
-constexpr bool kServoXInverted = SCS0009_X_REVERSED != 0;
-constexpr bool kServoYInverted = SCS0009_Y_REVERSED != 0;
+constexpr int16_t kServoXCenterOffset = SCS0009_X_CENTER_OFFSET;
+constexpr int16_t kServoYCenterOffset = SCS0009_Y_CENTER_OFFSET;
+constexpr bool kServoXReverseDirection = false;
+constexpr bool kServoYReverseDirection = true;
 constexpr uint32_t kScsBaudRate = 1000000;
 constexpr uint16_t kScsPositionMin = 0;
 constexpr uint16_t kScsPositionMax = 1023;
@@ -41,6 +45,11 @@ constexpr uint16_t kScsDefaultSpeed = 200;
 int16_t clampDegree(int16_t degree)
 {
   return std::clamp<int16_t>(degree, 0, 180);
+}
+
+int16_t applyCenterOffset(int16_t degree, int16_t offset_degree)
+{
+  return clampDegree(static_cast<int16_t>(degree + offset_degree));
 }
 
 uint32_t clampDuration(int16_t duration_ms)
@@ -56,11 +65,15 @@ int16_t readInt16Le(const uint8_t *src)
 }
 
 #if defined(USE_SERVO_SCS0009)
-uint16_t degreeToScsPosition(int16_t degree, bool inverted)
+int16_t applyScsDirection(int16_t degree, bool reverse_direction)
 {
   const int16_t normalized_degree = clampDegree(degree);
-  const int16_t mapped_degree = inverted ? static_cast<int16_t>(180 - normalized_degree) : normalized_degree;
-  const long position = map(mapped_degree, 0, 180, kScsPositionMin, kScsPositionMax);
+  return reverse_direction ? static_cast<int16_t>(180 - normalized_degree) : normalized_degree;
+}
+
+uint16_t degreeToScsPosition(int16_t degree, bool reverse_direction)
+{
+  const long position = map(applyScsDirection(degree, reverse_direction), 0, 180, kScsPositionMin, kScsPositionMax);
   return static_cast<uint16_t>(std::clamp<long>(position, kScsPositionMin, kScsPositionMax));
 }
 
@@ -80,13 +93,13 @@ void BodyServo::init()
   }
 
 #if defined(USE_SERVO_SG90)
-  axis_x_.servo.write(axis_x_.current_degree);
-  axis_y_.servo.write(axis_y_.current_degree);
+  axis_x_.servo.write(applyCenterOffset(axis_x_.current_degree, axis_x_.center_offset_degree));
+  axis_y_.servo.write(applyCenterOffset(axis_y_.current_degree, axis_y_.center_offset_degree));
 #elif defined(USE_SERVO_SCS0009)
   sc_.PWMMode(axis_x_.scs_id, false);
   sc_.PWMMode(axis_y_.scs_id, false);
-  sc_.WritePos(axis_x_.scs_id, degreeToScsPosition(axis_x_.current_degree, axis_x_.inverted), 0, kScsDefaultSpeed);
-  sc_.WritePos(axis_y_.scs_id, degreeToScsPosition(axis_y_.current_degree, axis_y_.inverted), 0, kScsDefaultSpeed);
+  sc_.WritePos(axis_x_.scs_id, degreeToScsPosition(applyCenterOffset(axis_x_.current_degree, axis_x_.center_offset_degree), axis_x_.reverse_direction), 0, kScsDefaultSpeed);
+  sc_.WritePos(axis_y_.scs_id, degreeToScsPosition(applyCenterOffset(axis_y_.current_degree, axis_y_.center_offset_degree), axis_y_.reverse_direction), 0, kScsDefaultSpeed);
 #endif
 }
 
@@ -254,15 +267,19 @@ bool BodyServo::ensureAttached()
 #if defined(USE_SERVO_SG90)
   axis_x_.servo.setPeriodHertz(kServoFrequencyHz);
   axis_y_.servo.setPeriodHertz(kServoFrequencyHz);
+  axis_x_.center_offset_degree = kServoXCenterOffset;
+  axis_y_.center_offset_degree = kServoYCenterOffset;
 
   const bool x_ok = axis_x_.servo.attach(kServoXPin, kServoPulseMinUs, kServoPulseMaxUs) > 0;
   const bool y_ok = axis_y_.servo.attach(kServoYPin, kServoPulseMinUs, kServoPulseMaxUs) > 0;
   attached_ = x_ok && y_ok;
 #elif defined(USE_SERVO_SCS0009)
   axis_x_.scs_id = kServoXId;
-  axis_x_.inverted = kServoXInverted;
+  axis_x_.reverse_direction = kServoXReverseDirection;
+  axis_x_.center_offset_degree = kServoXCenterOffset;
   axis_y_.scs_id = kServoYId;
-  axis_y_.inverted = kServoYInverted;
+  axis_y_.reverse_direction = kServoYReverseDirection;
+  axis_y_.center_offset_degree = kServoYCenterOffset;
 
   Serial2.begin(kScsBaudRate, SERIAL_8N1, SCS_SRIAL_RX_PIN, SCS_SRIAL_TX_PIN);
   sc_.pSerial = &Serial2;
@@ -289,7 +306,7 @@ void BodyServo::updateAxis(AxisMotion &axis, uint32_t now)
   if (elapsed >= axis.move_duration_ms)
   {
     axis.current_degree = axis.target_degree;
-    axis.servo.write(axis.current_degree);
+    axis.servo.write(applyCenterOffset(axis.current_degree, axis.center_offset_degree));
     axis.moving = false;
     axis.last_update_ms = now;
     return;
@@ -297,7 +314,7 @@ void BodyServo::updateAxis(AxisMotion &axis, uint32_t now)
 
   const float progress = static_cast<float>(elapsed) / static_cast<float>(axis.move_duration_ms);
   axis.current_degree = axis.start_degree + static_cast<int16_t>((axis.target_degree - axis.start_degree) * progress);
-  axis.servo.write(axis.current_degree);
+  axis.servo.write(applyCenterOffset(axis.current_degree, axis.center_offset_degree));
   axis.last_update_ms = now;
 #elif defined(USE_SERVO_SCS0009)
   const uint32_t elapsed = now - axis.move_start_ms;
@@ -324,9 +341,9 @@ void BodyServo::startMove(AxisMotion &axis, int8_t degree, int16_t duration_ms)
   {
     axis.current_degree = axis.target_degree;
 #if defined(USE_SERVO_SG90)
-    axis.servo.write(axis.current_degree);
+    axis.servo.write(applyCenterOffset(axis.current_degree, axis.center_offset_degree));
 #elif defined(USE_SERVO_SCS0009)
-  sc_.WritePos(axis.scs_id, degreeToScsPosition(axis.current_degree, axis.inverted), 0, kScsDefaultSpeed);
+  sc_.WritePos(axis.scs_id, degreeToScsPosition(applyCenterOffset(axis.current_degree, axis.center_offset_degree), axis.reverse_direction), 0, kScsDefaultSpeed);
 #endif
     axis.moving = false;
     return;
@@ -335,7 +352,7 @@ void BodyServo::startMove(AxisMotion &axis, int8_t degree, int16_t duration_ms)
 #if defined(USE_SERVO_SG90)
   axis.moving = true;
 #elif defined(USE_SERVO_SCS0009)
-  sc_.WritePos(axis.scs_id, degreeToScsPosition(axis.target_degree, axis.inverted), clampScsDuration(duration_ms), 0);
+  sc_.WritePos(axis.scs_id, degreeToScsPosition(applyCenterOffset(axis.target_degree, axis.center_offset_degree), axis.reverse_direction), clampScsDuration(duration_ms), 0);
   axis.moving = true;
 #endif
 }

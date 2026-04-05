@@ -37,8 +37,9 @@ private:
 #endif
 #if defined(USE_SERVO_SCS0009)
     uint8_t scs_id = 0;
-  bool inverted = false;
+    bool reverse_direction = false;
 #endif
+    int16_t center_offset_degree = 0;
     int16_t current_degree = 90;
     int16_t start_degree = 90;
     int16_t target_degree = 90;
