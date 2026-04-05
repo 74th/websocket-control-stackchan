@@ -281,8 +281,8 @@ bool BodyServo::ensureAttached()
   axis_y_.reverse_direction = kServoYReverseDirection;
   axis_y_.center_offset_degree = kServoYCenterOffset;
 
-  Serial2.begin(kScsBaudRate, SERIAL_8N1, SCS_SRIAL_RX_PIN, SCS_SRIAL_TX_PIN);
-  sc_.pSerial = &Serial2;
+  Serial1.begin(kScsBaudRate, SERIAL_8N1, SCS_SRIAL_RX_PIN, SCS_SRIAL_TX_PIN);
+  sc_.pSerial = &Serial1;
   attached_ = true;
 #endif
 
