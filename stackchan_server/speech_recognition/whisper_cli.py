@@ -4,7 +4,6 @@ import asyncio
 import io
 import json
 import math
-import os
 import shlex
 import shutil
 import tempfile
@@ -12,7 +11,9 @@ import wave
 from logging import getLogger
 from pathlib import Path
 
-from ..static import LISTEN_AUDIO_FORMAT, LISTEN_LANGUAGE_CODE
+from pydantic_settings import BaseSettings
+
+from ..static import LISTEN_AUDIO_FORMAT
 from ..types import SpeechRecognizer
 
 logger = getLogger(__name__)
@@ -23,57 +24,59 @@ _DEFAULT_VAD_MIN_SILENCE_DURATION_MS = 400
 _DEFAULT_VAD_SPEECH_PAD_MS = 30
 
 
-class WhisperCppSpeechToText(SpeechRecognizer):
+class WhisperCLISpeechToTextConfig(BaseSettings):
+    language: str = "auto"
+    model_path: str | None = None
+    cli_path: str = "whisper-cli"
+    threads: int | None = None
+    translate: bool = False
+    no_speech_threshold: float = 0.8
+    suppress_non_speech_tokens: bool = True
+    vad_model_path: Path | None = None
+    use_vad: bool = True
+    vad_threshold: float = _DEFAULT_VAD_THRESHOLD
+    vad_min_speech_duration_ms: int = _DEFAULT_VAD_MIN_SPEECH_DURATION_MS
+    vad_min_silence_duration_ms: int = _DEFAULT_VAD_MIN_SILENCE_DURATION_MS
+    vad_speech_pad_ms: int = _DEFAULT_VAD_SPEECH_PAD_MS
+    silence_rms_threshold: float = _DEFAULT_SILENCE_RMS_THRESHOLD
+
+    class Config:
+        env_prefix = "STACKCHAN_WHISPER_CLI_"
+
+
+class WhisperCLISpeechToText(SpeechRecognizer):
     def __init__(
         self,
         *,
-        model_path: str | Path | None = None,
-        cli_path: str = "whisper-cli",
-        threads: int | None = None,
-        translate: bool = False,
-        no_speech_threshold: float = 0.8,
-        suppress_non_speech_tokens: bool = True,
-        vad_model_path: str | Path | None = None,
-        use_vad: bool = True,
-        vad_threshold: float = _DEFAULT_VAD_THRESHOLD,
-        vad_min_speech_duration_ms: int = _DEFAULT_VAD_MIN_SPEECH_DURATION_MS,
-        vad_min_silence_duration_ms: int = _DEFAULT_VAD_MIN_SILENCE_DURATION_MS,
-        vad_speech_pad_ms: int = _DEFAULT_VAD_SPEECH_PAD_MS,
-        silence_rms_threshold: float = _DEFAULT_SILENCE_RMS_THRESHOLD,
+        config: WhisperCLISpeechToTextConfig | None = None,
     ) -> None:
-        resolved_model_path = model_path or os.getenv("STACKCHAN_WHISPER_MODEL")
-        if not resolved_model_path:
-            raise ValueError("whisper.cpp model_path is required or set STACKCHAN_WHISPER_MODEL")
-        self._model_path = Path(resolved_model_path)
-        self._cli_path = cli_path
-        self._threads = threads
-        self._translate = translate
-        self._no_speech_threshold = no_speech_threshold
-        self._suppress_non_speech_tokens = suppress_non_speech_tokens
-        self._vad_model_path = _resolve_vad_model_path(vad_model_path)
-        self._use_vad = use_vad
-        self._vad_threshold = vad_threshold
-        self._vad_min_speech_duration_ms = vad_min_speech_duration_ms
-        self._vad_min_silence_duration_ms = vad_min_silence_duration_ms
-        self._vad_speech_pad_ms = vad_speech_pad_ms
-        self._silence_rms_threshold = silence_rms_threshold
+        self._conf = config or WhisperCLISpeechToTextConfig()
+        if self._conf.model_path is None:
+            raise ValueError(
+                "whisper.cpp model_path is required or set STACKCHAN_WHISPER_CLI_MODEL"
+            )
 
     async def transcribe(self, pcm_bytes: bytes) -> str:
-        if not self._model_path.is_file():
-            raise FileNotFoundError(f"whisper.cpp model not found: {self._model_path}")
-        if _pcm_rms_level(pcm_bytes) < self._silence_rms_threshold:
+        assert self._conf.model_path
+
+        if not Path(self._conf.model_path).is_file():
+            raise FileNotFoundError(
+                f"whisper.cpp model not found: {self._conf.model_path}"
+            )
+        if _pcm_rms_level(pcm_bytes) < self._conf.silence_rms_threshold:
             logger.info(
                 "Skipping whisper.cpp transcription because pcm rms %.2f is below silence threshold %.2f",
                 _pcm_rms_level(pcm_bytes),
-                self._silence_rms_threshold,
+                self._conf.silence_rms_threshold,
             )
             return ""
 
-        cli_path = shutil.which(self._cli_path)
+        cli_path = shutil.which(self._conf.cli_path)
         if cli_path is None:
-            raise FileNotFoundError(f"whisper.cpp CLI not found in PATH: {self._cli_path}")
+            raise FileNotFoundError(
+                f"whisper.cpp CLI not found in PATH: {self._conf.cli_path}"
+            )
 
-        language = _normalize_language(LISTEN_LANGUAGE_CODE)
         with tempfile.TemporaryDirectory(prefix="stackchan_whisper_") as temp_dir_name:
             temp_dir = Path(temp_dir_name)
             wav_path = temp_dir / "input.wav"
@@ -90,38 +93,38 @@ class WhisperCppSpeechToText(SpeechRecognizer):
             command = [
                 cli_path,
                 "-m",
-                str(self._model_path),
+                str(self._conf.model_path),
                 "-f",
                 str(wav_path),
                 "-l",
-                language,
+                self._conf.language,
                 "-nth",
-                str(self._no_speech_threshold),
+                str(self._conf.no_speech_threshold),
                 "-nt",
                 "-ojf",
                 "-of",
                 str(out_base),
             ]
-            if self._threads is not None:
-                command.extend(["-t", str(self._threads)])
-            if self._translate:
+            if self._conf.threads is not None:
+                command.extend(["-t", str(self._conf.threads)])
+            if self._conf.translate:
                 command.append("-tr")
-            if self._suppress_non_speech_tokens:
+            if self._conf.suppress_non_speech_tokens:
                 command.append("-sns")
-            if self._use_vad and self._vad_model_path is not None:
+            if self._conf.use_vad and self._conf.vad_model_path is not None:
                 command.extend(
                     [
                         "--vad",
                         "-vm",
-                        str(self._vad_model_path),
+                        str(self._conf.vad_model_path),
                         "-vt",
-                        str(self._vad_threshold),
+                        str(self._conf.vad_threshold),
                         "-vspd",
-                        str(self._vad_min_speech_duration_ms),
+                        str(self._conf.vad_min_speech_duration_ms),
                         "-vsd",
-                        str(self._vad_min_silence_duration_ms),
+                        str(self._conf.vad_min_silence_duration_ms),
                         "-vp",
-                        str(self._vad_speech_pad_ms),
+                        str(self._conf.vad_speech_pad_ms),
                     ]
                 )
             command.append("-np")
@@ -152,12 +155,6 @@ class WhisperCppSpeechToText(SpeechRecognizer):
             if transcript:
                 logger.info("whisper.cpp transcript: %s", transcript)
             return transcript
-
-
-def _normalize_language(language_code: str) -> str:
-    if not language_code:
-        return "auto"
-    return language_code.split("-", 1)[0].lower()
 
 
 def _normalize_transcript(text: str) -> str:
@@ -194,23 +191,11 @@ def _pcm_rms_level(pcm_bytes: bytes) -> float:
     sample_count = len(pcm_bytes) // 2
     total = 0.0
     for index in range(0, sample_count * 2, 2):
-        sample = int.from_bytes(pcm_bytes[index : index + 2], byteorder="little", signed=True)
+        sample = int.from_bytes(
+            pcm_bytes[index : index + 2], byteorder="little", signed=True
+        )
         total += float(sample * sample)
     return math.sqrt(total / sample_count)
-
-
-def _resolve_vad_model_path(vad_model_path: str | Path | None) -> Path | None:
-    if vad_model_path is not None:
-        path = Path(vad_model_path)
-        return path if path.is_file() else None
-
-    env_path = os.getenv("STACKCHAN_WHISPER_VAD_MODEL")
-    if env_path:
-        path = Path(env_path)
-        if path.is_file():
-            return path
-
-    return None
 
 
 def _write_wav(
@@ -230,4 +215,4 @@ def _write_wav(
         path.write_bytes(buffer.getvalue())
 
 
-__all__ = ["WhisperCppSpeechToText"]
+__all__ = ["WhisperCLISpeechToText", "WhisperCLISpeechToTextConfig"]

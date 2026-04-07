@@ -7,10 +7,6 @@ from logging import getLogger
 from dotenv import load_dotenv
 
 from stackchan_server.app import StackChanApp
-from stackchan_server.speech_recognition import (
-    WhisperCppSpeechToText,
-)
-from stackchan_server.speech_synthesis import VoiceVoxSpeechSynthesizer
 from stackchan_server.ws_proxy import EmptyTranscriptError, WsProxy
 
 logger = getLogger(__name__)
@@ -23,24 +19,7 @@ logging.basicConfig(
 load_dotenv()
 
 
-def _create_app() -> StackChanApp:
-    whisper_model = os.getenv("STACKCHAN_WHISPER_MODEL")
-    # if os.getenv("STACKCHAN_WHISPER_SERVER_URL") or os.getenv("STACKCHAN_WHISPER_SERVER_PORT"):
-    #     return StackChanApp(
-    #         speech_recognizer=WhisperServerSpeechToText(server_url=whisper_server_url),
-    #         speech_synthesizer=VoiceVoxSpeechSynthesizer(),
-    #     )
-    if whisper_model:
-        return StackChanApp(
-            speech_recognizer=WhisperCppSpeechToText(
-                model_path=whisper_model,
-            ),
-            speech_synthesizer=VoiceVoxSpeechSynthesizer(),
-        )
-    return StackChanApp()
-
-
-app = _create_app()
+app = StackChanApp()
 
 
 @app.setup

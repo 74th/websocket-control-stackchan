@@ -5,17 +5,16 @@ import os
 import wave
 from collections.abc import AsyncIterator
 from logging import getLogger
-from typing import Any
 
 from google import genai
 from google.genai import types
+from google.genai.client import AsyncClient as GenAIAsyncClient
+from pydantic_settings import BaseSettings
 
 from ..types import AudioFormat, StreamingSpeechSynthesizer
 
 logger = getLogger(__name__)
 
-_DEFAULT_MODEL = "gemini-2.5-flash-tts"
-_DEFAULT_LOCATION = "global"
 _PCM_SAMPLE_RATE_HZ = 24000
 _PCM_CHANNELS = 1
 _PCM_SAMPLE_WIDTH = 2
@@ -26,11 +25,23 @@ _OUTPUT_FORMAT = AudioFormat(
 )
 
 
-def create_vertexai_client() -> Any:
+class GoogleCloudSpeechTextToSpeechConfig(BaseSettings):
+    model: str = "gemini-2.5-flash-tts"
+    language_code: str = "ja-JP"
+    voice_name: str = "Despina"
+    style_instructions: str | None = None
+
+    class Config:
+        env_prefix = "STACKCHAN_GOOGLE_CLOUD_TTS_"
+
+
+def create_vertexai_client() -> GenAIAsyncClient:
     return genai.Client(
         vertexai=True,
         project=os.getenv("GOOGLE_CLOUD_PROJECT"),
-        location=os.getenv("GOOGLE_CLOUD_LOCATION") or os.getenv("GOOGLE_CLOUD_REGION") or _DEFAULT_LOCATION,
+        location=os.getenv("GOOGLE_CLOUD_LOCATION")
+        or os.getenv("GOOGLE_CLOUD_REGION")
+        or "global",
     ).aio
 
 
@@ -38,16 +49,10 @@ class GoogleCloudTextToSpeech(StreamingSpeechSynthesizer):
     def __init__(
         self,
         *,
-        model: str = _DEFAULT_MODEL,
-        language_code: str = "ja-JP",
-        voice_name: str = "Despina",
-        style_instructions: str | None = None,
-        client: Any | None = None,
+        config: GoogleCloudSpeechTextToSpeechConfig | None = None,
+        client: GenAIAsyncClient | None = None,
     ) -> None:
-        self._model = model
-        self._language_code = language_code
-        self._voice_name = voice_name
-        self._style_instructions = style_instructions
+        self._conf = config or GoogleCloudSpeechTextToSpeechConfig()
         self._client = client or create_vertexai_client()
 
     @property
@@ -61,30 +66,30 @@ class GoogleCloudTextToSpeech(StreamingSpeechSynthesizer):
         logger.info(
             "Gemini TTS response pcm_bytes=%d model=%s language_code=%s voice_name=%s",
             len(pcm_bytes),
-            self._model,
-            self._language_code,
-            self._voice_name,
+            self._conf.model,
+            self._conf.language_code,
+            self._conf.voice_name,
         )
         return self._wrap_pcm_as_wav(bytes(pcm_bytes))
 
     async def synthesize_stream(self, text: str) -> AsyncIterator[bytes]:
         logger.info(
             "Requesting Gemini TTS model=%s language_code=%s voice_name=%s text_chars=%d",
-            self._model,
-            self._language_code,
-            self._voice_name,
+            self._conf.model,
+            self._conf.language_code,
+            self._conf.voice_name,
             len(text),
         )
         async for response in await self._client.models.generate_content_stream(
-            model=self._model,
+            model=self._conf.model,
             contents=self._build_contents(text),
             config=types.GenerateContentConfig(
                 response_modalities=["AUDIO"],
                 speech_config=types.SpeechConfig(
-                    language_code=self._language_code,
+                    language_code=self._conf.language_code,
                     voice_config=types.VoiceConfig(
                         prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                            voice_name=self._voice_name,
+                            voice_name=self._conf.voice_name,
                         )
                     ),
                 ),
@@ -95,9 +100,9 @@ class GoogleCloudTextToSpeech(StreamingSpeechSynthesizer):
                 yield chunk
 
     def _build_contents(self, text: str) -> str:
-        if not self._style_instructions:
+        if not self._conf.style_instructions:
             return text
-        return f"{self._style_instructions}\n\n{text}"
+        return f"{self._conf.style_instructions}\n\n{text}"
 
     def _extract_audio_bytes(self, response: types.GenerateContentResponse) -> bytes:
         pcm_bytes = bytearray()
@@ -121,4 +126,8 @@ class GoogleCloudTextToSpeech(StreamingSpeechSynthesizer):
             return buffer.getvalue()
 
 
-__all__ = ["GoogleCloudTextToSpeech", "create_vertexai_client"]
+__all__ = [
+    "GoogleCloudTextToSpeech",
+    "create_vertexai_client",
+    "GoogleCloudSpeechTextToSpeechConfig",
+]

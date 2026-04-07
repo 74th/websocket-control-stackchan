@@ -16,8 +16,6 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 
 from stackchan_server.app import StackChanApp
-from stackchan_server.speech_recognition.whisper_cpp import WhisperCppSpeechToText
-from stackchan_server.speech_synthesis.voicevox import VoiceVoxSpeechSynthesizer
 from stackchan_server.ws_proxy import (
     EmptyTranscriptError,
     ServoMoveType,
@@ -34,19 +32,7 @@ logger.setLevel("DEBUG")
 WORKSPACE_DIR = pathlib.Path(__file__).parent / "workspace"
 
 
-def _create_app() -> StackChanApp:
-    whisper_model = os.getenv("STACKCHAN_WHISPER_MODEL")
-    if whisper_model:
-        return StackChanApp(
-            speech_recognizer=WhisperCppSpeechToText(
-                model_path=whisper_model,
-            ),
-            speech_synthesizer=VoiceVoxSpeechSynthesizer(),
-        )
-    return StackChanApp()
-
-
-app = _create_app()
+app = StackChanApp()
 
 model = "claude-haiku-4-5-20251001"
 if os.environ.get("CLAUDE_CODE_USE_VERTEX") == "1":
