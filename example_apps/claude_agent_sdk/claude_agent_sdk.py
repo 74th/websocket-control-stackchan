@@ -12,6 +12,7 @@ from claude_agent_sdk import (
     create_sdk_mcp_server,
     tool,
 )
+from dotenv import load_dotenv
 from pydantic import BaseModel
 
 from stackchan_server.app import StackChanApp
@@ -23,6 +24,8 @@ from stackchan_server.ws_proxy import (
     ServoWaitType,
     WsProxy,
 )
+
+load_dotenv()
 
 logger = getLogger(__name__)
 logger.addHandler(StreamHandler())
@@ -41,6 +44,7 @@ def _create_app() -> StackChanApp:
             speech_synthesizer=VoiceVoxSpeechSynthesizer(),
         )
     return StackChanApp()
+
 
 app = _create_app()
 
@@ -74,17 +78,16 @@ home_remote_mcp = create_sdk_mcp_server(
     tools=[aircon_remote],
 )
 
+
 def setup_claude_agent_sdk() -> ClaudeSDKClient:
     option = ClaudeAgentOptions(
         model=model,
         system_prompt="あなたは音声AIアシスタントのスタックチャンです。ユーザの質問に対して、3文程度の言葉で答えてください。音声案内であるため、マークダウンや絵文字等は用いずに、文字列だけで回答してください",
         cwd=str(WORKSPACE_DIR),
         setting_sources=["project"],
-
         # MCPサーバを登録
         mcp_servers={"home-remote": home_remote_mcp},
         # tools=["mcp__home-remote__aircon-control"],
-
         # 全て許可
         permission_mode="bypassPermissions",
     )
@@ -117,15 +120,17 @@ async def talk_session(proxy: WsProxy):
 
             logger.info("Human: %s", text)
 
-            await proxy.move_servo([
-                (ServoMoveType.MOVE_Y, 100, 100),
-                (ServoWaitType.SLEEP, 200),
-                (ServoMoveType.MOVE_Y, 90, 100),
-                (ServoWaitType.SLEEP, 200),
-                (ServoMoveType.MOVE_Y, 100, 100),
-                (ServoWaitType.SLEEP, 200),
-                (ServoMoveType.MOVE_Y, 90, 100),
-            ])
+            await proxy.move_servo(
+                [
+                    (ServoMoveType.MOVE_Y, 100, 100),
+                    (ServoWaitType.SLEEP, 200),
+                    (ServoMoveType.MOVE_Y, 90, 100),
+                    (ServoWaitType.SLEEP, 200),
+                    (ServoMoveType.MOVE_Y, 100, 100),
+                    (ServoWaitType.SLEEP, 200),
+                    (ServoMoveType.MOVE_Y, 90, 100),
+                ]
+            )
 
             # AI応答の取得
             await client.query(text)
@@ -133,7 +138,6 @@ async def talk_session(proxy: WsProxy):
                 logger.info(message)
 
                 if isinstance(message, ResultMessage):
-
                     # 発話
                     logger.info("AI: %s", message.result)
                     if message.result:

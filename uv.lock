@@ -1412,6 +1412,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "google-cloud-speech" },
     { name = "google-genai" },
+    { name = "python-dotenv" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "voicevox-client" },
 ]
@@ -1430,6 +1431,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.128.0" },
     { name = "google-cloud-speech", specifier = ">=2.35.0" },
     { name = "google-genai", specifier = ">=1.59.0" },
+    { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.40.0" },
     { name = "voicevox-client", specifier = ">=1.1.0" },
 ]

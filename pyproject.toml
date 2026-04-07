@@ -14,6 +14,7 @@ dependencies = [
     "google-cloud-speech>=2.35.0",
     "uvicorn[standard]>=0.40.0",
     "voicevox-client>=1.1.0",
+    "python-dotenv>=1.2.1",
 ]
 
 [dependency-groups]
