@@ -44,6 +44,9 @@ async def setup(proxy: WsProxy):
 
 @app.talk_session
 async def talk_session(proxy: WsProxy):
+    # 聞くポーズ
+    await proxy.move_servo([(ServoMoveType.MOVE_Y, 80, 100)])
+
     chat = client.chats.create(
         model="gemini-3-flash-preview",
         config=types.GenerateContentConfig(
@@ -52,15 +55,33 @@ async def talk_session(proxy: WsProxy):
     )
 
     while True:
-        text = await proxy.listen()
-        if not text:
+        try:
+            # 音声認識
+            text = await proxy.listen()
+        except EmptyTranscriptError:
+            # 音声なし
+            await proxy.move_servo([(ServoMoveType.MOVE_Y, 90, 100)])
             return
+
         logger.info("Human: %s", text)
+
+        # 頷く
+        await proxy.move_servo(
+            [
+                (ServoMoveType.MOVE_Y, 100, 100),
+                (ServoWaitType.SLEEP, 200),
+                (ServoMoveType.MOVE_Y, 90, 100),
+                (ServoWaitType.SLEEP, 200),
+                (ServoMoveType.MOVE_Y, 100, 100),
+                (ServoWaitType.SLEEP, 200),
+                (ServoMoveType.MOVE_Y, 90, 100),
+            ]
+        )
 
         # AI応答の取得
         resp = await chat.send_message(text)
 
-        # 発話
+        # 話す
         logger.info("AI: %s", resp.text)
         if resp.text:
             await proxy.speak(resp.text)
@@ -76,8 +97,8 @@ async def talk_session(proxy: WsProxy):
 ## 現在開発中の環境
 
 - 本体: M5Stack CoreS3 SE
-- 音声認識: Google Cloud Speech-to-Text
-- 音声合成: VOICEVOX No.7
+- 音声認識: Google Cloud Speech-to-Text, Whisper.cpp
+- 音声合成: Google Cloud Text-to-Speech, VOICEVOX
 
 ## コードの構成
 
