@@ -45,6 +45,11 @@ uv run uvicorn app.gemini:app.fastapi --host 0.0.0.0 --port 8000
 
 ## Claude Agent SDKサンプル
 
+Claude Agent SDKのエージェントはファイルシステムの変更権限を持ちます。
+意図しないファイル編集するような指示を与えないように注意してください。
+
+TODO: サンプルアプリはファイル編集、読取権限を剥奪する
+
 ### NodeJSのインストール
 
 NodeJSのインストールも必要です。

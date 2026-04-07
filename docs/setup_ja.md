@@ -149,12 +149,16 @@ Pythonの環境構築の方法は、パッケージマネージャuvのページ
 
 ## アプリケーションを作る
 
-TODO
+(WIP)
+
+[example_apps/gemini.py](../example_apps/gemini.py) をベースに改変を行い、アプリケーションを作ってみましょう。
 
 ## Claude Agent SDKによるエージェントの構築と実行
 
-TODO
+(WIP)
 
-## Docker環境で実行する
+[example_apps/claude_agent_sdk/claude_agent_sdk.py](../example_apps/claude_agent_sdk/claude_agent_sdk.py) をベースに改変を行い、Claude Agent SDKを利用したエージェントを作ってみましょう。
+
+## Claude Agent SDKをDocker環境で実行する
 
 TODO
