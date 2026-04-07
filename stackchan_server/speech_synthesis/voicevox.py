@@ -1,25 +1,33 @@
 from __future__ import annotations
 
-import os
-
+from pydantic_settings import BaseSettings
 from vvclient import Client as VVClient
 
 from ..types import SpeechSynthesizer
 
 
-def create_voicevox_client() -> VVClient:
-    voicevox_url = os.getenv("STACKCHAN_VOICEVOX_URL", "http://localhost:50021")
-    return VVClient(base_uri=voicevox_url)
+class VoiceVoxSpeechSynthesizerConfig(BaseSettings):
+    url: str = "http://localhost:50021"
+    speaker: int = 29
+
+    class Config:
+        env_prefix = "STACKCHAN_VOICEVOX_"
 
 
 class VoiceVoxSpeechSynthesizer(SpeechSynthesizer):
-    def __init__(self, speaker: int = 29) -> None:
-        self._speaker = speaker
+    def __init__(
+            self,
+            config: VoiceVoxSpeechSynthesizerConfig | None = None,
+            ) -> None:
+        self._conf = config or VoiceVoxSpeechSynthesizerConfig()
+
+    def create_voicevox_client(self) -> VVClient:
+        return VVClient(base_uri=self._conf.url)
 
     async def synthesize(self, text: str) -> bytes:
-        async with create_voicevox_client() as client:
-            audio_query = await client.create_audio_query(text, speaker=self._speaker)
-            return await audio_query.synthesis(speaker=self._speaker)
+        async with self.create_voicevox_client() as client:
+            audio_query = await client.create_audio_query(text, speaker=self._conf.speaker)
+            return await audio_query.synthesis(speaker=self._conf.speaker)
 
 
-__all__ = ["VoiceVoxSpeechSynthesizer", "create_voicevox_client"]
+__all__ = ["VoiceVoxSpeechSynthesizer"]

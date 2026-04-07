@@ -51,6 +51,9 @@ M5Stack Basic、M5Stack Core2は対応していません。
 
 - Tower Pro SG90
     - [秋月電子通商](https://akizukidenshi.com/catalog/g/g108761/)
+- FEETECH SCS0009
+    - [秋月電子通商](https://akizukidenshi.com/catalog/g/g131664/)
+    - [スイッチサイエンス](https://www.switch-science.com/products/8042)
 
 ### 対応確認済み外装ケースと接続ボード
 
@@ -79,22 +82,47 @@ M5Stack Basic、M5Stack Core2は対応していません。
 
 [./firmware_ja.md](./firmware_ja.md)
 
-## VOICEVOXのDockerコンテナの実行
+## （オプション）VOICEVOXのDockerコンテナの実行
 
-標準では、音声合成にVOICEVOXを利用します。
+標準ではGoogle Cloud Text-to-Speechを利用して音声合成を行います。
+無料で利用できる中品質の音声合成エンジンのVOICEVOXも利用できます。
+キャラクターボイスが多くてかわいいので、VOICEVOXもぜひ試してみてください。
+
+VOICEVOXを利用する際には、VOICEVOXの利用規約の参照をお願いします。
+
+https://voicevox.hiroshiba.jp/
+
 VOICEVOXはDockerイメージが提供されているため、Docker環境を構築して実行します。
 
-Dockerがインストールされていない場合は以下のページヲ参照して、Dockerをインストールしてください。
+Dockerがインストールされていない場合は以下のページを参照して、Dockerをインストールしてください。
 
 > 今すぐ始める | Docker
 >
 > https://www.docker.com/ja-jp/get-started/
 
-VOICEVOXのDockerコンテナの実行方法は、以下のページを参照してください。
+Dockerがインストールできたら、リポジトリのディレクトリで以下のコマンドを実行してください。
 
 ```
 docker compose run --rm --service-ports voicevox
 ```
+
+以下のサイトにアクセスし、「VOICEVOX Engine」と表示されていれば成功です。
+
+> http://localhost:50021/
+
+## （オプション）Whisper.cppのwhisper-cliのインストール
+
+標準ではGoogle Cloud Speech-to-Textを利用して音声認識を行います。
+無料で利用できるWhisper.cppのwhisper-cliも利用できます。
+
+TODO
+
+## （オプション）Whisper.cppのwhisper-serverのインストールと実行
+
+標準ではGoogle Cloud Speech-to-Textを利用して音声認識を行います。
+無料で利用できるWhisper.cppのwhisper-serverも利用できます。
+
+TODO
 
 ## Python開発環境の構築
 
@@ -105,23 +133,32 @@ Pythonの環境構築の方法は、パッケージマネージャuvのページ
 >
 > https://docs.astral.sh/uv/getting-started/installation/
 
+## サーバの設定
+
+以下のページを参照して、サーバの設定を行ってください。
+
+[./server_ja.md](./server_ja.md)
+
 ## サンプルアプリケーションの実行
 
-uv でPythonサーバを起動します。
+まずは、サンプルアプリケーションを実行してみましょう。
 
-```bash
-uv sync
-uv run uvicorn app.gemini:app.fastapi --host 0.0.0.0 --port 8000
-```
+以下のページを参照して、サンプルアプリケーションの実行方法を確認してください。
 
-## アプリケーションの設定
+[./run_sample_app_ja.md](./run_sample_app_ja.md)
 
-TODO
+## アプリケーションを作る
+
+(WIP)
+
+[example_apps/gemini.py](../example_apps/gemini.py) をベースに改変を行い、アプリケーションを作ってみましょう。
 
 ## Claude Agent SDKによるエージェントの構築と実行
 
-TODO
+(WIP)
 
-## Docker環境で実行する
+[example_apps/claude_agent_sdk/claude_agent_sdk.py](../example_apps/claude_agent_sdk/claude_agent_sdk.py) をベースに改変を行い、Claude Agent SDKを利用したエージェントを作ってみましょう。
+
+## Claude Agent SDKをDocker環境で実行する
 
 TODO

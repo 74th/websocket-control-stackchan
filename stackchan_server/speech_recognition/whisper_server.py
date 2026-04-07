@@ -4,7 +4,6 @@ import asyncio
 import json
 import math
 import mimetypes
-import os
 import uuid
 from collections.abc import Mapping
 from logging import getLogger
@@ -13,7 +12,9 @@ from typing import cast
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from ..static import LISTEN_AUDIO_FORMAT, LISTEN_LANGUAGE_CODE
+from pydantic_settings import BaseSettings
+
+from ..static import LISTEN_AUDIO_FORMAT
 from ..types import SpeechRecognizer
 
 logger = getLogger(__name__)
@@ -22,31 +23,38 @@ _DEFAULT_SILENCE_RMS_THRESHOLD = 75.0
 _DEFAULT_SERVER_PORT = 8080
 
 
+class WhisperServerSpeechToTextConfig(BaseSettings):
+    url: str | None = None
+    port: int = _DEFAULT_SERVER_PORT
+    language: str = "auto"
+    detect_language: bool = False
+    response_format: str = "verbose_json"
+    silence_rms_threshold: float = _DEFAULT_SILENCE_RMS_THRESHOLD
+    request_timeout_seconds: float = 60.0
+
+    class Config:
+        env_prefix = "STACKCHAN_WHISPER_SERVER_"
+
+
 class WhisperServerSpeechToText(SpeechRecognizer):
     def __init__(
         self,
         *,
-        server_url: str | None = None,
-        language: str | None = None,
-        detect_language: bool = False,
-        response_format: str = "verbose_json",
-        silence_rms_threshold: float = _DEFAULT_SILENCE_RMS_THRESHOLD,
-        request_timeout_seconds: float = 60.0,
+        config: WhisperServerSpeechToTextConfig | None = None,
     ) -> None:
-        self._server_url = server_url or _default_server_url()
-        self._language = language or _normalize_language(LISTEN_LANGUAGE_CODE)
-        self._detect_language = detect_language
-        self._response_format = response_format
-        self._silence_rms_threshold = silence_rms_threshold
-        self._request_timeout_seconds = request_timeout_seconds
+        self._conf = config or WhisperServerSpeechToTextConfig()
+        self._server_url = _default_server_url(
+            url=self._conf.url,
+            port=self._conf.port,
+        )
 
     async def transcribe(self, pcm_bytes: bytes) -> str:
         rms_level = _pcm_rms_level(pcm_bytes)
-        if rms_level < self._silence_rms_threshold:
+        if rms_level < self._conf.silence_rms_threshold:
             logger.info(
                 "Skipping whisper-server transcription because pcm rms %.2f is below silence threshold %.2f",
                 rms_level,
-                self._silence_rms_threshold,
+                self._conf.silence_rms_threshold,
             )
             return ""
 
@@ -59,7 +67,7 @@ class WhisperServerSpeechToText(SpeechRecognizer):
         transcript = await asyncio.to_thread(
             self._request_transcript,
             wav_bytes,
-            self._language,
+            self._conf.language,
         )
         if transcript:
             logger.info("whisper-server transcript: %s", transcript)
@@ -67,10 +75,10 @@ class WhisperServerSpeechToText(SpeechRecognizer):
 
     def _request_transcript(self, wav_bytes: bytes, language: str) -> str:
         fields = {
-            "response_format": self._response_format,
+            "response_format": self._conf.response_format,
             "language": language,
         }
-        if self._detect_language:
+        if self._conf.detect_language:
             fields["detect_language"] = "true"
 
         body, content_type = _encode_multipart_formdata(
@@ -85,7 +93,9 @@ class WhisperServerSpeechToText(SpeechRecognizer):
         )
         logger.info("Running whisper-server request: POST %s", self._server_url)
         try:
-            with urlopen(request, timeout=self._request_timeout_seconds) as response:
+            with urlopen(
+                request, timeout=self._conf.request_timeout_seconds
+            ) as response:
                 response_body = response.read()
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace").strip()
@@ -95,7 +105,7 @@ class WhisperServerSpeechToText(SpeechRecognizer):
         except URLError as exc:
             raise RuntimeError(f"whisper-server request failed: {exc.reason}") from exc
 
-        if self._response_format == "json":
+        if self._conf.response_format == "json":
             payload = _load_json_response_bytes(response_body)
             if not isinstance(payload, Mapping):
                 return ""
@@ -107,18 +117,10 @@ class WhisperServerSpeechToText(SpeechRecognizer):
         return _load_transcript_from_verbose_json(payload)
 
 
-def _default_server_url() -> str:
-    configured = os.getenv("STACKCHAN_WHISPER_SERVER_URL")
-    if configured:
-        return configured.rstrip("/")
-    port = os.getenv("STACKCHAN_WHISPER_SERVER_PORT", str(_DEFAULT_SERVER_PORT))
+def _default_server_url(*, url: str | None, port: int) -> str:
+    if url:
+        return url.rstrip("/")
     return f"http://127.0.0.1:{port}/inference"
-
-
-def _normalize_language(language_code: str) -> str:
-    if not language_code:
-        return ""
-    return language_code.split("-", 1)[0].lower()
 
 
 def _load_json_response_bytes(response_body: bytes) -> object:
@@ -155,7 +157,9 @@ def _pcm_rms_level(pcm_bytes: bytes) -> float:
     sample_count = len(pcm_bytes) // 2
     total = 0.0
     for index in range(0, sample_count * 2, 2):
-        sample = int.from_bytes(pcm_bytes[index : index + 2], byteorder="little", signed=True)
+        sample = int.from_bytes(
+            pcm_bytes[index : index + 2], byteorder="little", signed=True
+        )
         total += float(sample * sample)
     return math.sqrt(total / sample_count)
 
@@ -199,7 +203,11 @@ def _encode_multipart_formdata(
         )
 
     for field_name, (filename, content, content_type) in files.items():
-        guessed_type = content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        guessed_type = (
+            content_type
+            or mimetypes.guess_type(filename)[0]
+            or "application/octet-stream"
+        )
         lines.extend(
             [
                 b"--" + boundary_bytes,
@@ -218,4 +226,4 @@ def _encode_multipart_formdata(
     return body, f"multipart/form-data; boundary={boundary}"
 
 
-__all__ = ["WhisperServerSpeechToText"]
+__all__ = ["WhisperServerSpeechToText", "WhisperServerSpeechToTextConfig"]

@@ -4,29 +4,40 @@ import asyncio
 from logging import getLogger
 
 from google.cloud import speech
+from pydantic_settings import BaseSettings
 
-from ..static import LISTEN_AUDIO_FORMAT, LISTEN_LANGUAGE_CODE
+from ..static import LISTEN_AUDIO_FORMAT
 from ..types import StreamingSpeechRecognizer, StreamingSpeechSession
 
 logger = getLogger(__name__)
 _STREAM_END = object()
 
 
+class GoogleCloudSpeechToTextConfig(BaseSettings):
+    language_code: str = "ja-JP"
+
+    class Config:
+        env_prefix = "STACKCHAN_GOOGLE_CLOUD_STT_"
+
+
 class _GoogleCloudStreamingSession(StreamingSpeechSession):
     def __init__(
         self,
+        config: GoogleCloudSpeechToTextConfig,
         client: speech.SpeechAsyncClient,
     ) -> None:
+        self._conf = config
         self._client = client
         self._config = speech.StreamingRecognitionConfig(
             config=speech.RecognitionConfig(
                 encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
                 sample_rate_hertz=LISTEN_AUDIO_FORMAT.sample_rate_hz,
-                language_code=LISTEN_LANGUAGE_CODE,
+                language_code=config.language_code,
             ),
             interim_results=False,
             single_utterance=False,
         )
+
         self._audio_queue: asyncio.Queue[bytes | object] = asyncio.Queue()
         self._done = asyncio.Event()
         self._closed = False
@@ -73,7 +84,9 @@ class _GoogleCloudStreamingSession(StreamingSpeechSession):
 
     async def _run(self) -> None:
         try:
-            responses = await self._client.streaming_recognize(requests=self._request_iter())
+            responses = await self._client.streaming_recognize(
+                requests=self._request_iter()
+            )
             async for response in responses:
                 for result in response.results:
                     if not result.alternatives:
@@ -95,7 +108,12 @@ class _GoogleCloudStreamingSession(StreamingSpeechSession):
 
 
 class GoogleCloudSpeechToText(StreamingSpeechRecognizer):
-    def __init__(self, client: speech.SpeechAsyncClient | None = None) -> None:
+    def __init__(
+        self,
+        config: GoogleCloudSpeechToTextConfig | None = None,
+        client: speech.SpeechAsyncClient | None = None,
+    ) -> None:
+        self._conf = config or GoogleCloudSpeechToTextConfig()
         self._client = client or speech.SpeechAsyncClient()
 
     async def transcribe(self, pcm_bytes: bytes) -> str:
@@ -103,14 +121,14 @@ class GoogleCloudSpeechToText(StreamingSpeechRecognizer):
         config = speech.RecognitionConfig(
             encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
             sample_rate_hertz=LISTEN_AUDIO_FORMAT.sample_rate_hz,
-            language_code=LISTEN_LANGUAGE_CODE,
+            language_code=self._conf.language_code,
         )
         response = await self._client.recognize(config=config, audio=audio)
 
         return "".join(result.alternatives[0].transcript for result in response.results)
 
     async def start_stream(self) -> StreamingSpeechSession:
-        return _GoogleCloudStreamingSession(self._client)
+        return _GoogleCloudStreamingSession(self._conf, self._client)
 
 
-__all__ = ["GoogleCloudSpeechToText"]
+__all__ = ["GoogleCloudSpeechToText", "GoogleCloudSpeechToTextConfig"]
