@@ -4,6 +4,8 @@ import logging
 import os
 from logging import getLogger
 
+from dotenv import load_dotenv
+
 from stackchan_server.app import StackChanApp
 from stackchan_server.speech_recognition import (
     WhisperCppSpeechToText,
@@ -15,6 +17,8 @@ from stackchan_server.ws_proxy import (
     ServoWaitType,
     WsProxy,
 )
+
+load_dotenv()
 
 logger = getLogger(__name__)
 logging.basicConfig(

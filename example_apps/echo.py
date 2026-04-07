@@ -4,6 +4,8 @@ import logging
 import os
 from logging import getLogger
 
+from dotenv import load_dotenv
+
 from stackchan_server.app import StackChanApp
 from stackchan_server.speech_recognition import (
     WhisperCppSpeechToText,
@@ -17,6 +19,9 @@ logging.basicConfig(
     format="%(asctime)s.%(msecs)03d %(levelname)s:%(name)s:%(message)s",
     datefmt="%H:%M:%S",
 )
+
+load_dotenv()
+
 
 def _create_app() -> StackChanApp:
     whisper_model = os.getenv("STACKCHAN_WHISPER_MODEL")
@@ -54,7 +59,6 @@ async def talk_session(proxy: WsProxy):
             return
         logger.info("Heard: %s", text)
         await proxy.speak(text)
-
 
 
 if __name__ == "__main__":

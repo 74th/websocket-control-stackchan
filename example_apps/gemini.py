@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from logging import StreamHandler, getLogger
 
+from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
@@ -12,14 +13,17 @@ logger = getLogger(__name__)
 logger.addHandler(StreamHandler())
 logger.setLevel("DEBUG")
 
+load_dotenv()
 
 app = StackChanApp()
 
 client = genai.Client(vertexai=True).aio
 
+
 @app.setup
 async def setup(proxy: WsProxy):
     logger.info("WebSocket connected")
+
 
 @app.talk_session
 async def talk_session(proxy: WsProxy):
@@ -45,8 +49,9 @@ async def talk_session(proxy: WsProxy):
             await proxy.speak(resp.text)
 
 
-
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("example_apps.gemini:app.fastapi", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(
+        "example_apps.gemini:app.fastapi", host="0.0.0.0", port=8000, reload=True
+    )
