@@ -103,7 +103,7 @@ Dockerがインストールされていない場合は以下のページを参�
 Dockerがインストールできたら、リポジトリのディレクトリで以下のコマンドを実行してください。
 
 ```
-docker compose run --rm --service-ports voicevox
+docker compose -f ./misc/voicevox/docker-compose.yml up -d
 ```
 
 以下のサイトにアクセスし、「VOICEVOX Engine」と表示されていれば成功です。
