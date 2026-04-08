@@ -9,7 +9,7 @@
 
 ## Google Cloudの設定
 
-[./google_cloud_ja.md](./google_cloud_ja.md) にて、Google Cloudのプロジェクトを作成し、サービスアカウントの秘密鍵のJSONファイルダウンロードしました。
+[./google_cloud_ja.md](./google_cloud_ja.md) にて、Google Cloudのプロジェクトを作成し、サービスアカウントの秘密鍵のJSONファイルをダウンロードしました。
 
 この値を記述します。
 

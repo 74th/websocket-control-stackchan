@@ -36,7 +36,7 @@ volumesの項目にある/path/to/your/google_cloud_credentials の部分を、�
 
 ```yaml
     volumes:
-      # Google Cloud service account key JSON direcrory
+      # Google Cloud service account key JSON directory
       - /Users/foobar/google_cloud_credentials:/secrets/google_cloud_credentials:ro
 ```
 
@@ -80,7 +80,7 @@ services:
 #     - "50021:50021"
 ```
 
-また、services.app.depends_on　の項目も削除、もしくはコメントアウトしてください。
+また、services.app.depends_on の項目も削除、もしくはコメントアウトしてください。
 
 ```yaml
 services:
@@ -106,7 +106,7 @@ docker compose build
 docker compose up -d
 ```
 
-起動を確認するには、以下のコマンド実行します。
+起動を確認するには、以下のコマンドを実行します。
 
 ```
 docker compose ps -a

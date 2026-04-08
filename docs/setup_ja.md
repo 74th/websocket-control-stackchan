@@ -2,15 +2,15 @@
 
 このプロダクトを動かすには、以下の準備が必要です。
 
-1. ｽﾀｯｸﾁｬﾝのハードウェアを用意する
-2. ｽﾀｯｸﾁｬﾝのMCUとなるESP32-S3に、ファームウェアを書き込む
-3. WebソケットサーバをPC上で動かす
+1. スタックチャンのハードウェアを用意する
+2. スタックチャンのMCUとなるESP32-S3に、ファームウェアを書き込む
+3. WebSocket サーバーをPC上で動かす
 
 ## 必要なもの
 
 Claude Agent SDKを利用したエージェントを動かす場合、以下のものが必要になります。
 
-1. ｽﾀｯｸﾁｬﾝのハードウェア
+1. スタックチャンのハードウェア
 2. Google Cloudの契約
     - 有償ですが、従量制料金で無料枠もあります
     - 音声認識にGoogle Cloud Speech-to-Textを利用
@@ -19,11 +19,11 @@ Claude Agent SDKを利用したエージェントを動かす場合、以下の�
     - Windows / macOS / Linux いずれも可
     - 以下の役割を担います
         - ファームウェアのビルド
-        - Webソケットサーバ
+        - WebSocket サーバー
 
-## ｽﾀｯｸﾁｬﾝのハードウェア
+    ## スタックチャンのハードウェア
 
-ｽﾀｯｸﾁｬﾝのハードウェアには以下が必要です。
+    スタックチャンのハードウェアには以下が必要です。
 
 - M5Stackコアシリーズ
 - 外装ケース
@@ -45,7 +45,7 @@ M5Stack Basic、M5Stack Core2は対応していません。
     - [スイッチサイエンス](https://www.switch-science.com/products/8960)
 
 > [!CAUTION]
-> ESP-SR の利用に、MCUにPRRAM付きESP32-S3が必要になります。このMCUではなく、M5Stack Basic/Core2は利用できません。
+> ESP-SR の利用には、PSRAM付きESP32-S3が必要になります。そのため、M5Stack Basic/Core2 は利用できません。
 
 ### 対応サーボ
 
@@ -100,10 +100,20 @@ Dockerがインストールされていない場合は以下のページを参�
 >
 > https://www.docker.com/ja-jp/get-started/
 
-Dockerがインストールできたら、リポジトリのディレクトリで以下のコマンドを実行してください。
+Dockerがインストールできたら、リポジトリのディレクトリで以下の起動コマンドを実行してください。
 
 ```
+# 起動
 docker compose -f ./misc/voicevox/docker-compose.yml up -d
+
+# 起動の確認（STATUSがUpになっていればOK）
+docker compose -f ./misc/voicevox/docker-compose.yml ps -a
+
+# 停止（インスタンスが残るため、削除が必要です）
+docker compose -f ./misc/voicevox/docker-compose.yml stop
+
+# 削除
+docker compose -f ./misc/voicevox/docker-compose.yml rm
 ```
 
 以下のサイトにアクセスし、「VOICEVOX Engine」と表示されていれば成功です。
@@ -126,7 +136,7 @@ docker compose -f ./misc/voicevox/docker-compose.yml up -d
 
 ## Python開発環境の構築
 
-このリポジトリでは、WebソケットサーバをPythonで実装しています。
+このリポジトリでは、WebSocket サーバーをPythonで実装しています。
 Pythonの環境構築の方法は、パッケージマネージャuvのページを参照してください。
 
 > Installation | uv

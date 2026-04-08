@@ -40,7 +40,7 @@ uv add claude-agent-sdk
 
 app.py を書き換えていきます。
 
-WORKSPACE_DIR という変数の定義があるため、、ワークスペースのディレクトリを設定するように書き換えます。
+WORKSPACE_DIR という変数の定義があるため、ワークスペースのディレクトリを設定するように書き換えます。
 
 ```py
 WORKSPACE_DIR = "/path/to/your_workspace"

@@ -1,6 +1,6 @@
 # ファームウェアの設定とビルド
 
-Firmwareに書き込む設定は firmware/include/config.h に記述します。
+ファームウェアに書き込む設定は firmware/include/config.h に記述します。
 [firmware/include/config.template.h](../firmware/include/config.template.h)をコピーして、firmware/include/config.h を作成してください。
 
 ## WiFi設定
