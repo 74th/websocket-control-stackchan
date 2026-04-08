@@ -149,10 +149,13 @@ Pythonの環境構築の方法は、パッケージマネージャuvのページ
 
 ## Claude Agent SDKによるAIエージェントアプリケーションの開発
 
-以下のページを参照して、ユーザ独自のコードで、Claude Agent SDKを利用したAIエージェントアプリケーションを起動する方法を確認してください。
+Claude Agent SDKを利用したAIエージェントアプリケーションの開発方法は、以下のページを参照してください。
 
-[docs/create_your_claude_agent_sdk_apps.md](../docs/create_your_claude_agent_sdk_apps.md)
+[create_your_claude_agent_sdk_apps.md](./create_your_claude_agent_sdk_apps.md)
 
-## Claude Agent SDKをDocker環境で実行する
+## Claude Agent SDKをDockerコンテナ上で実行する
 
-TODO
+Dockerコンテナを使うと、ファイルシステムが隔離されるため、Claude Agent SDKを安全に実行できます。
+以下のページを参照してください。
+
+[create_docker_container_ja.md](./create_docker_container_ja.md)

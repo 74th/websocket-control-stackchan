@@ -1,0 +1,22 @@
+name: stackchan-server
+services:
+  app:
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      STACKCHAN_VOICEVOX_URL: http://voicevox:50021
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/google_cloud_credentials/application_credentials.json
+    depends_on:
+      - voicevox
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      # Google Cloud service account key JSON direcrory
+      - /path/to/google_cloud_credentials:/secrets/google_cloud_credentials:ro
+      - ./workspace:/app/workspace
+  voicevox:
+    image: voicevox/voicevox_engine:cpu-latest
+    ports:
+      - "50021:50021"
