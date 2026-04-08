@@ -49,7 +49,7 @@ STACKCHAN_USE_GOOGLE_CLOUD_STT=1
 STACKCHAN_GOOGLE_CLOUD_STT_LANGUAGE_CODE="ja-JP"
 ```
 
-### Whisper.cppのwhisper-cliの設定
+### (オプション)Whisper.cppのwhisper-cliの設定
 
 (WIP)
 
@@ -59,7 +59,7 @@ STACKCHAN_WHISPER_CLI_MODEL_PATH="/path/to/whisper.cpp/ggml-small.bin"
 STACKCHAN_WHISPER_CLI_VAD_MODEL_PATH="/path/to/whisper.cpp/ggml-silero-v5.1.2.bin"
 ```
 
-### Whisper.cppのwhisper-serverの設定
+### (オプション)Whisper.cppのwhisper-serverの設定
 
 (WIP)
 

@@ -38,9 +38,3 @@ async def talk_session(proxy: WsProxy):
             return
         logger.info("Heard: %s", text)
         await proxy.speak(text)
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run("example_apps.echo:app.fastapi", host="0.0.0.0", port=8000, reload=True)

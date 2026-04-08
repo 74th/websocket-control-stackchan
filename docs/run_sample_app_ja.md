@@ -17,7 +17,7 @@ uv sync
 その後、以下のコマンドでPythonサーバを起動します。
 
 ```
-uv run uvicorn app.echo_with_move:app.fastapi --host 0.0.0.0 --port 8000
+uv run uvicorn example_apps.echo_with_move:app.fastapi --host 0.0.0.0 --port 8000
 ```
 
 スタックチャンを起動して、「Disconnected」から「Idle」のステータス表示になれば接続されています。
@@ -36,7 +36,7 @@ uv sync --group example-gemini
 その後、以下のコマンドでPythonサーバを起動します。
 
 ```
-uv run uvicorn app.gemini:app.fastapi --host 0.0.0.0 --port 8000
+uv run uvicorn example_apps.gemini:app.fastapi --host 0.0.0.0 --port 8000
 ```
 
 スタックチャンを起動して、「Disconnected」から「Idle」のステータス表示になれば接続されています。
@@ -86,7 +86,7 @@ Claude Agent SDKを利用するには、VertexAIを利用する場合、以下�
 その後、以下のコマンドでPythonサーバを起動します。
 
 ```
-uv run uvicorn app.claude_agent_sdk:app.fastapi --host 0.0.0.0 --port 8000
+uv run uvicorn example_apps.claude_agent_sdk.app:app.fastapi --host 0.0.0.0 --port 8000
 ```
 
 スタックチャンを起動して、「Disconnected」から「Idle」のステータス表示になれば接続されています。

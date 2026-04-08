@@ -44,9 +44,6 @@ async def setup(proxy: WsProxy):
 
 @app.talk_session
 async def talk_session(proxy: WsProxy):
-    # 聞くポーズ
-    await proxy.move_servo([(ServoMoveType.MOVE_Y, 80, 100)])
-
     chat = client.chats.create(
         model="gemini-3-flash-preview",
         config=types.GenerateContentConfig(
@@ -55,6 +52,9 @@ async def talk_session(proxy: WsProxy):
     )
 
     while True:
+        # 聞くポーズ
+        await proxy.move_servo([(ServoMoveType.MOVE_Y, 80, 100)])
+
         try:
             # 音声認識
             text = await proxy.listen()
