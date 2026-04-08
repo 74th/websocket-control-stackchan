@@ -27,7 +27,7 @@
 
 ## Googleアカウントを作成する
 
-Googleアカウントを保持していない場合は、以下のページから「アカウントを作成する」をクリックし、Googleアカウントを作成して下しさい。
+Googleアカウントを持っていない場合は、以下のページから「アカウントを作成する」をクリックし、Googleアカウントを作成してください。
 
 > Googleアカウント
 >
@@ -95,7 +95,7 @@ Project Nameに「stackchan-dev-74th」など適当なプロジェクト名を�
 ## Vertex AIにて、利用するモデルを有効化する
 
 Vertex AIでは、Google提供のモデルは初期状態で利用可能になっていますが、Claudeなどのパートナーモデルは利用する前に有効化が必要です。
-ここでは、Anthoropic の Claude Haiku 4.5 を有効化する方法を説明します。
+ここでは、Anthropic の Claude Haiku 4.5 を有効化する方法を説明します。
 
 モデルの有効化は、モデルのカタログページである Model Garden から行います。
 
@@ -115,15 +115,15 @@ Search Modelsの欄に、利用するモデル名を入力します。
 利用先についての照会が表示されるので、入力します。
 個人の利用であれば以下のように入力してください。
 
-- Bussiness Name（会社名）: 氏名 (Personal)
-- Bussiness website（会社のウェブサイト）: 個人が証明できるURL（例: TwitterのプロフィールURLなど）
+- Business Name（会社名）: 氏名 (Personal)
+- Business website（会社のウェブサイト）: 個人であることを示せるURL（例: TwitterのプロフィールURLなど）
 - Contact email address（連絡先アドレス）: 連絡可能なメールアドレス
-- Where is your Business headquarted（本社所在国） : Japan
+- Where is your Business headquartered（本社所在国） : Japan
 - Who are your intended users of Claude models（Claudeモデルの想定ユーザー）: Internal employees
 - What are your intended use cases for Claude models（Claudeモデルの想定ユースケース）: self-built home voice assistant application for personal use
     - (日本語訳) 個人開発、個人利用のホーム音声アシスタントアプリケーション
 - Do any of your use cases have additional requirements per Anthropic's Acceptable Use Policy?: Yes
-    - 高リスク事例、追加ユースケースにあたいするかの質問。高リスク事例は「法務」「ヘルスケア」「保険」「金融」等で、追加ユースケースとは「消費者向けチャットボット」、「未成年向け製品」「エージェントによる利用」「ClaudeのMCPサーバの利用」をさします。「エージェントによる利用」であるため、Yesを選択します。
+    - 高リスク事例や追加ユースケースに該当するかの質問です。高リスク事例は「法務」「ヘルスケア」「保険」「金融」等で、追加ユースケースとは「消費者向けチャットボット」、「未成年向け製品」「エージェントによる利用」「ClaudeのMCPサーバーの利用」を指します。「エージェントによる利用」であるため、Yesを選択します。
 - If yes, please describe how you plan to meet the additional requirements.（追加要件はどのように守るか）: Used only in a personal home environment by the developer.
     - (回答日本語訳) 開発者の個人の家庭環境でのみ使用します。
 
@@ -235,5 +235,5 @@ Google Cloudでは、一定の金額を超えたら自動で停止するよう�
 
 ![alt text](image/google_cloud/budget_alert_5.png)
 
-これで、FInishをクリックします。
+これで、Finishをクリックします。
 これで、プロジェクトを作成したメールアドレスに対して、予算超過で通知が行くようになります。

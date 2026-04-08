@@ -3,8 +3,8 @@
 複数のサンプルアプリケーションが実装されています。
 
 - [example_apps/echo_with_move.py](../example_apps/echo_with_move.py): 音声認識した内容をそのまま音声合成して返す。ボディも動かして聞くポーズをします。
-- [example_apps/gemini.py](../example_app/gemini.py): Gemini応答
-- [example_apps/claude_agent.py](../example_app/claude_agent.py): Claude Agent SDKを利用したエージェント
+- [example_apps/gemini.py](../example_apps/gemini.py): Gemini応答
+- [example_apps/claude_agent_sdk/app.py](../example_apps/claude_agent_sdk/app.py): Claude Agent SDKを利用したエージェント
 
 ## おうむ返しサンプル
 
@@ -46,7 +46,7 @@ uv run uvicorn example_apps.gemini:app.fastapi --host 0.0.0.0 --port 8000
 ## Claude Agent SDKサンプル
 
 Claude Agent SDKのエージェントはファイルシステムの変更権限を持ちます。
-意図しないファイル編集するような指示を与えないように注意してください。
+意図しないファイル編集をするような指示を与えないように注意してください。
 
 TODO: サンプルアプリはファイル編集、読取権限を剥奪する
 

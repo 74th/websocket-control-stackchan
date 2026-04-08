@@ -13,8 +13,8 @@ https://code.visualstudio.com/Download
 
 ダウンロード後、PCにインストールしてください。
 
-各OS毎のセットアップの方法については、以下の公式ドキュメントを参照ください。
-英語のため、日本語日本訳して利用してください。
+各OSごとのセットアップ方法については、以下の公式ドキュメントを参照してください。
+英語のため、必要に応じて日本語に翻訳して利用してください。
 
 > https://code.visualstudio.com/docs/setup/setup-overview
 
