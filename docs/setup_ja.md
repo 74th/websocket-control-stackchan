@@ -115,14 +115,14 @@ docker compose run --rm --service-ports voicevox
 標準ではGoogle Cloud Speech-to-Textを利用して音声認識を行います。
 無料で利用できるWhisper.cppのwhisper-cliも利用できます。
 
-TODO
+(TODO)
 
 ## （オプション）Whisper.cppのwhisper-serverのインストールと実行
 
 標準ではGoogle Cloud Speech-to-Textを利用して音声認識を行います。
 無料で利用できるWhisper.cppのwhisper-serverも利用できます。
 
-TODO
+(TODO)
 
 ## Python開発環境の構築
 
@@ -137,7 +137,7 @@ Pythonの環境構築の方法は、パッケージマネージャuvのページ
 
 以下のページを参照して、サーバの設定を行ってください。
 
-[./server_ja.md](./server_ja.md)
+[server_ja.md](./server_ja.md)
 
 ## サンプルアプリケーションの実行
 
@@ -145,19 +145,13 @@ Pythonの環境構築の方法は、パッケージマネージャuvのページ
 
 以下のページを参照して、サンプルアプリケーションの実行方法を確認してください。
 
-[./run_sample_app_ja.md](./run_sample_app_ja.md)
+[run_sample_app_ja.md](./run_sample_app_ja.md)
 
-## アプリケーションを作る
+## Claude Agent SDKによるAIエージェントアプリケーションの開発
 
-(WIP)
+以下のページを参照して、ユーザ独自のコードで、Claude Agent SDKを利用したAIエージェントアプリケーションを起動する方法を確認してください。
 
-[example_apps/gemini.py](../example_apps/gemini.py) をベースに改変を行い、アプリケーションを作ってみましょう。
-
-## Claude Agent SDKによるエージェントの構築と実行
-
-(WIP)
-
-[example_apps/claude_agent_sdk/claude_agent_sdk.py](../example_apps/claude_agent_sdk/claude_agent_sdk.py) をベースに改変を行い、Claude Agent SDKを利用したエージェントを作ってみましょう。
+[docs/create_your_claude_agent_sdk_apps.md](../docs/create_your_claude_agent_sdk_apps.md)
 
 ## Claude Agent SDKをDocker環境で実行する
 

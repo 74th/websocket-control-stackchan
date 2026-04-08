@@ -35,31 +35,31 @@ async def setup(proxy: WsProxy):
 @app.talk_session
 async def talk_session(proxy: WsProxy):
     while True:
+        # listening pose
+        await proxy.move_servo([(ServoMoveType.MOVE_Y, 80, 100)])
+
         try:
-            await proxy.move_servo([(ServoMoveType.MOVE_Y, 80, 100)])
-
+            # voice recognition
             text = await proxy.listen()
-
-            await proxy.move_servo(
-                [
-                    (ServoMoveType.MOVE_Y, 100, 100),
-                    (ServoWaitType.SLEEP, 200),
-                    (ServoMoveType.MOVE_Y, 90, 100),
-                    (ServoWaitType.SLEEP, 200),
-                    (ServoMoveType.MOVE_Y, 100, 100),
-                    (ServoWaitType.SLEEP, 200),
-                    (ServoMoveType.MOVE_Y, 90, 100),
-                ]
-            )
-
         except EmptyTranscriptError:
+            # off pose
             await proxy.move_servo([(ServoMoveType.MOVE_Y, 90, 100)])
             return
+
+        # nod pose
+        await proxy.move_servo(
+            [
+                (ServoMoveType.MOVE_Y, 100, 100),
+                (ServoWaitType.SLEEP, 200),
+                (ServoMoveType.MOVE_Y, 90, 100),
+                (ServoWaitType.SLEEP, 200),
+                (ServoMoveType.MOVE_Y, 100, 100),
+                (ServoWaitType.SLEEP, 200),
+                (ServoMoveType.MOVE_Y, 90, 100),
+            ]
+        )
+
         logger.info("Heard: %s", text)
+
+        # speaking
         await proxy.speak(text)
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run("example_apps.echo:app.fastapi", host="0.0.0.0", port=8000, reload=True)

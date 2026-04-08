@@ -7,7 +7,12 @@ from google import genai
 from google.genai import types
 
 from stackchan_server.app import StackChanApp
-from stackchan_server.ws_proxy import WsProxy
+from stackchan_server.ws_proxy import (
+    EmptyTranscriptError,
+    ServoMoveType,
+    ServoWaitType,
+    WsProxy,
+)
 
 logger = getLogger(__name__)
 logger.addHandler(StreamHandler())
@@ -35,23 +40,38 @@ async def talk_session(proxy: WsProxy):
     )
 
     while True:
-        text = await proxy.listen()
-        if not text:
+        # listening pose
+        await proxy.move_servo([(ServoMoveType.MOVE_Y, 80, 100)])
+
+        try:
+            # voice recognition
+            text = await proxy.listen()
+
+        except EmptyTranscriptError:
+            # off pose
+            await proxy.move_servo([(ServoMoveType.MOVE_Y, 90, 100)])
             return
+
+
+        # nod pose
+        await proxy.move_servo(
+            [
+                (ServoMoveType.MOVE_Y, 100, 100),
+                (ServoWaitType.SLEEP, 200),
+                (ServoMoveType.MOVE_Y, 90, 100),
+                (ServoWaitType.SLEEP, 200),
+                (ServoMoveType.MOVE_Y, 100, 100),
+                (ServoWaitType.SLEEP, 200),
+                (ServoMoveType.MOVE_Y, 90, 100),
+            ]
+        )
+
         logger.info("Human: %s", text)
 
-        # AI応答の取得
+        # generate response
         resp = await chat.send_message(text)
 
-        # 発話
+        # speaking
         logger.info("AI: %s", resp.text)
         if resp.text:
             await proxy.speak(resp.text)
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(
-        "example_apps.gemini:app.fastapi", host="0.0.0.0", port=8000, reload=True
-    )
