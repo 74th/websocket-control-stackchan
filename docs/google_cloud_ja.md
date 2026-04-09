@@ -90,6 +90,7 @@ Project Nameに「stackchan-dev-74th」など適当なプロジェクト名を�
 合わせて、以下のAPIを有効化してください。
 
 - (上記で実施済み) Google Cloud Speech-to-Text API
+- Google Cloud Text-to-Speech API
 - Vertex AI API
 
 ## Vertex AIにて、利用するモデルを有効化する
