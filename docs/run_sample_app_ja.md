@@ -20,7 +20,7 @@ uv sync
 uv run uvicorn example_apps.echo_with_move:app.fastapi --host 0.0.0.0 --port 8000
 ```
 
-スタックチャンを起動して、「Disconnected」から「Idle」のステータス表示になれば接続されています。
+ｽﾀｯｸﾁｬﾝを起動して、「Disconnected」から「Idle」のステータス表示になれば接続されています。
 
 試しに「ハイ！スタックチャン！」と話しかけて、聞くポーズになることを確認して、話しかけてみてください。
 
@@ -39,7 +39,7 @@ uv sync --group example-gemini
 uv run uvicorn example_apps.gemini:app.fastapi --host 0.0.0.0 --port 8000
 ```
 
-スタックチャンを起動して、「Disconnected」から「Idle」のステータス表示になれば接続されています。
+ｽﾀｯｸﾁｬﾝを起動して、「Disconnected」から「Idle」のステータス表示になれば接続されています。
 
 試しに「ハイ！スタックチャン！」と話しかけて、聞くポーズになることを確認して、話しかけてみてください。
 
@@ -89,6 +89,6 @@ Claude Agent SDKを利用するには、VertexAIを利用する場合、以下�
 uv run uvicorn example_apps.claude_agent_sdk.app:app.fastapi --host 0.0.0.0 --port 8000
 ```
 
-スタックチャンを起動して、「Disconnected」から「Idle」のステータス表示になれば接続されています。
+ｽﾀｯｸﾁｬﾝを起動して、「Disconnected」から「Idle」のステータス表示になれば接続されています。
 
 試しに「ハイ！スタックチャン！」と話しかけて、聞くポーズになることを確認して、話しかけてみてください。
