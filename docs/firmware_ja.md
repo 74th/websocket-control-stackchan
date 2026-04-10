@@ -3,6 +3,16 @@
 ファームウェアに書き込む設定は firmware/include/config.h に記述します。
 [firmware/include/config.template.h](../firmware/include/config.template.h)をコピーして、firmware/include/config.h を作成してください。
 
+## 筐体の選択
+
+ビルドの設定が構成毎に組まれています。
+
+スタータスバー中の"env:m5stack-xxxx"もしくは"env:Default"と書かれている部分をクリックして、選択します。
+
+- env:m5stack-cores3-m5unified: M5Stack CoreS3
+- env:m5stack-atoms3r-m5unified: M5Atom S3RとAtomic Echo Base
+- env:m5stack-atoms3r-m5unified: M5Atom EchoS3R
+
 ## WiFi設定
 
 WiFi設定、接続先サーバをそれぞれ記述します。

@@ -43,6 +43,12 @@ M5Stack Basic、M5Stack Core2は対応していません。
     - [スイッチサイエンス](https://www.switch-science.com/products/10610)
 - M5Stack CoreS3
     - [スイッチサイエンス](https://www.switch-science.com/products/8960)
+- M5Stack ATOMS3R AI Chatbotキット（M5Stack Atom S3R と Atomic Echo Baseのセット）
+    - [スイッチサイエンス](https://www.switch-science.com/products/10487)
+<!--
+- M5Stack Atom VoiceS3R
+    - [スイッチサイエンス](https://www.switch-science.com/products/10808)
+-->
 
 > [!CAUTION]
 > ESP-SR の利用には、PSRAM付きESP32-S3が必要になります。そのため、M5Stack Basic/Core2 は利用できません。

@@ -1,6 +1,10 @@
 # scripts/flash_srmodels.py
 Import("env")
-import os, csv, subprocess, sys
+import csv
+import os
+import subprocess
+import sys
+
 
 def find_partition_offset(csv_path, name_candidates=("model", "srmodels", "esp_sr")):
     with open(csv_path, newline="") as f:
@@ -34,10 +38,10 @@ def after_upload(source, target, env):
     speed = env.subst("$UPLOAD_SPEED")
     esptool = env.subst("$PYTHONEXE") + " " + env.PioPlatform().get_package_dir("tool-esptoolpy") + "/esptool.py"
 
-    cmd = f'{esptool} --chip {chip} --port "{port}" --baud {speed} write_flash {hex(offset)} "{srmodels}"'
+    cmd = f'{esptool} --chip {chip} --port "{port}" --baud {speed} write-flash {hex(offset)} "{srmodels}"'
     print("Flashing srmodels:", cmd)
     ret = subprocess.call(cmd, shell=True)
     if ret != 0:
-        raise RuntimeError(f"esptool write_flash failed with code {ret}")
+        raise RuntimeError(f"esptool write-flash failed with code {ret}")
 
 env.AddPostAction("upload", after_upload)

@@ -14,6 +14,8 @@ public:
 private:
   void drawForState(StateMachine::State state);
   void drawFace();
+  bool isAtomS3R() const;
+  int32_t statusBarHeight() const;
 
   StateMachine &state_;
   bool has_prev_state_ = false;

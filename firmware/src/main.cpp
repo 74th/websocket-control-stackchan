@@ -262,6 +262,9 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
 void setup()
 {
   auto cfg = M5.config();
+#if defined(ARDUINO_M5STACK_ATOMS3R)
+  cfg.external_speaker.atomic_echo = 1;
+#endif
   M5.begin(cfg);
   auto mic_cfg = M5.Mic.config();
   mic_cfg.sample_rate = SAMPLE_RATE;
