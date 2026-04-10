@@ -55,6 +55,8 @@ M5Stack Basic、M5Stack Core2は対応していません。
     - [秋月電子通商](https://akizukidenshi.com/catalog/g/g131664/)
     - [スイッチサイエンス](https://www.switch-science.com/products/8042)
 
+なお、サーボがなくても動作します。
+
 ### 対応確認済み外装ケースと接続ボード
 
 - 原典のししかわさん製作ケースと、その接続ボードの組み合わせ
@@ -65,6 +67,8 @@ M5Stack Basic、M5Stack Core2は対応していません。
         - [TakaoさんのBoothショップ](https://mongonta.booth.pm/)でケースが販売されています
     - [接続ボード Stack-Chan_Takao_Base](https://github.com/akita11/Stack-chan_Takao_Base) ([@akita11](https://x.com/akita11))
         - スイッチサイエンスで[部品セット](https://www.switch-science.com/products/8906)、[完成品](https://www.switch-science.com/products/8905)が販売されています
+
+なお、ボディがない、M5Stack CoreS3単体でも動作します。
 
 ## Google Cloudの契約と設定方法
 
