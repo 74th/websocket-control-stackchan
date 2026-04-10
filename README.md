@@ -10,7 +10,7 @@ StackChanをフロントにし、メインのロジック処理をPC上のPython
 > This is work in progress. The API and functionality may change without notice.
 
 > [!CAUTION]
-> これはスタックチャンを楽しむための個人のコミュニティプロジェクトです。M5Stack社や、その他のスタックチャン関連プロダクトとは関係ありません。
+> これはｽﾀｯｸﾁｬﾝを楽しむための個人のコミュニティプロジェクトです。M5Stack社や、その他のｽﾀｯｸﾁｬﾝ関連プロダクトとは関係ありません。
 
 ## サンプルコード
 
