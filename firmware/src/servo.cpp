@@ -14,10 +14,6 @@ namespace
 #error "Define only one of USE_SERVO_SG90 or USE_SERVO_SCS0009"
 #endif
 
-#if !defined(USE_SERVO_SG90) && !defined(USE_SERVO_SCS0009)
-#error "Define one of USE_SERVO_SG90 or USE_SERVO_SCS0009 in config.h"
-#endif
-
 #if defined(USE_SERVO_SG90)
 constexpr int kServoXPin = SERVO_SG90_X_PIN;
 constexpr int kServoYPin = SERVO_SG90_Y_PIN;
@@ -86,6 +82,11 @@ uint16_t clampScsDuration(int16_t duration_ms)
 
 void BodyServo::init()
 {
+#if !defined(USE_SERVO_SG90) && !defined(USE_SERVO_SCS0009)
+  log_i("Servo disabled; skipping body initialization");
+  return;
+#endif
+
   if (!ensureAttached())
   {
     log_w("Failed to attach servos");
@@ -167,10 +168,6 @@ void BodyServo::resetSequence()
 
 bool BodyServo::enqueueSequence(const uint8_t *payload, size_t payload_len)
 {
-  if (!ensureAttached())
-  {
-    return false;
-  }
   if (payload == nullptr || payload_len < 1)
   {
     log_w("ServoCmd payload too short: %u", static_cast<unsigned>(payload_len));
@@ -231,6 +228,17 @@ bool BodyServo::enqueueSequence(const uint8_t *payload, size_t payload_len)
     return false;
   }
 
+#if !defined(USE_SERVO_SG90) && !defined(USE_SERVO_SCS0009)
+  log_i("Ignoring servo sequence because no body servo is configured; commands=%u", static_cast<unsigned>(command_count));
+  completeSequence();
+  return true;
+#endif
+
+  if (!ensureAttached())
+  {
+    return false;
+  }
+
   resetSequence();
   steps_ = std::move(parsed_steps);
 
@@ -259,6 +267,10 @@ void BodyServo::setCompletionCallback(std::function<void()> cb)
 
 bool BodyServo::ensureAttached()
 {
+#if !defined(USE_SERVO_SG90) && !defined(USE_SERVO_SCS0009)
+  return true;
+#endif
+
   if (attached_)
   {
     return true;

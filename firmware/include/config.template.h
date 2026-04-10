@@ -7,6 +7,8 @@
 #define SERVER_PORT_H 8000              // Example: FastAPI port
 #define SERVER_PATH_H "/ws/stackchan"  // WebSocket path
 
+// Leave both servo options commented out if you are using a StackChan without a body.
+
 // -- using SG90 --
 #define USE_SERVO_SG90 1
 
