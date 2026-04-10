@@ -265,6 +265,9 @@ void setup()
 #if defined(ARDUINO_M5STACK_ATOMS3R)
   cfg.external_speaker.atomic_echo = 1;
 #endif
+#if defined(ARDUINO_ATOM_ECHOS3R)
+  cfg.internal_mic = true;
+#endif
   M5.begin(cfg);
   auto mic_cfg = M5.Mic.config();
   mic_cfg.sample_rate = SAMPLE_RATE;
