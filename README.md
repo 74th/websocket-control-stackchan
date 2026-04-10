@@ -100,7 +100,7 @@ async def talk_session(proxy: WsProxy):
     - M5Stack CoreS3 SE
     - M5Stack Atom S3R + Atomic Echo Base
     <!-- - M5Stack Atom EchoS3R -->
-- サーボ:
+- サーボ（なくても動作します）:
     - Tower Pro SG90
     - FEETECH SCS0009
 - 音声認識:
