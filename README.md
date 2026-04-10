@@ -96,9 +96,19 @@ async def talk_session(proxy: WsProxy):
 
 ## 現在開発中の環境
 
-- 本体: M5Stack CoreS3 SE
-- 音声認識: Google Cloud Speech-to-Text, Whisper.cpp
-- 音声合成: Google Cloud Text-to-Speech, VOICEVOX
+- コア:
+    - M5Stack CoreS3 SE
+    - M5Stack Atom S3R + Atomic Echo Base
+    <!-- - M5Stack Atom EchoS3R -->
+- サーボ（なくても動作します）:
+    - Tower Pro SG90
+    - FEETECH SCS0009
+- 音声認識:
+    - Google Cloud Speech-to-Text
+    - Whisper.cpp
+- 音声合成:
+    - Google Cloud Text-to-Speech
+    - VOICEVOX
 
 ## コードの構成
 
