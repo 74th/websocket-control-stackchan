@@ -66,6 +66,11 @@ void resetServerMetadata()
   g_server_metadata = ServerMetadataState{};
 }
 
+bool shouldUseDeviceWakeWord()
+{
+  return g_server_metadata.available && !g_server_metadata.has_server_wake_word;
+}
+
 void setFirmwareMetadataMessage(
     stackchan_websocket_v1_WebSocketMessage &message,
     uint32_t seq)

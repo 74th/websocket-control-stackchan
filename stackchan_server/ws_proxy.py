@@ -12,6 +12,7 @@ from typing import Any, Literal, Optional, Sequence, TypeAlias
 
 from fastapi import WebSocket, WebSocketDisconnect
 from google.protobuf.message import DecodeError
+from pydantic_settings import BaseSettings
 
 from . import __version__
 from .generated_protobuf import websocket_message_pb2 as _ws_pb2
@@ -42,6 +43,17 @@ _DOWN_SEGMENT_STAGGER_MILLIS = (
 )  # half interval for the second segment start
 _LISTEN_AUDIO_TIMEOUT_SECONDS = 10.0
 _DEBUG_RECORDING_ENABLED = os.getenv("DEBUG_RECODING") == "1"
+
+
+class _WakeWordServerConfig(BaseSettings):
+    no_use_client_wakeup_word: bool = False
+    use_open_wake_word: bool = False
+
+    class Config:
+        env_prefix = "STACKCHAN_"
+
+
+_WAKEWORD_SERVER_CONFIG = _WakeWordServerConfig()
 
 
 class FirmwareState(IntEnum):
@@ -216,13 +228,6 @@ class WsProxy:
 
     async def start(self) -> None:
         if self._receiving_task is None:
-            await self.ws.send_bytes(
-                encode_server_metadata_message(
-                    self._next_down_seq(),
-                    has_server_wake_word=self.server_metadata.has_server_wake_word,
-                    server_version=self.server_metadata.server_version,
-                )
-            )
             self._receiving_task = asyncio.create_task(self._receive_loop())
 
     async def close(self) -> None:
@@ -289,7 +294,7 @@ class WsProxy:
                     continue
 
                 if message.kind == ws_pb2.MESSAGE_KIND_FIRMWARE_METADATA:
-                    self._handle_firmware_metadata(message)
+                    await self._handle_firmware_metadata(message)
                     continue
 
                 if message.kind == ws_pb2.MESSAGE_KIND_STATE_EVT:
@@ -321,7 +326,7 @@ class WsProxy:
         logger.info("Received wakeword event")
         self._wakeword_event.set()
 
-    def _handle_firmware_metadata(self, message: Any) -> None:
+    async def _handle_firmware_metadata(self, message: Any) -> None:
         if message.message_type != ws_pb2.MESSAGE_TYPE_DATA:
             return
         if message.WhichOneof("body") != "firmware_metadata":
@@ -348,6 +353,29 @@ class WsProxy:
             self.firmware_metadata.servo_type,
             self.firmware_metadata.supports_audio_duplex,
             self.firmware_metadata.firmware_version,
+        )
+        self.server_metadata = self._build_server_metadata(self.firmware_metadata)
+        await self.ws.send_bytes(
+            encode_server_metadata_message(
+                self._next_down_seq(),
+                has_server_wake_word=self.server_metadata.has_server_wake_word,
+                server_version=self.server_metadata.server_version,
+            )
+        )
+
+    def _build_server_metadata(
+        self, firmware_metadata: FirmwareMetadata
+    ) -> ServerMetadata:
+        should_use_server_wake_word = (
+            _WAKEWORD_SERVER_CONFIG.use_open_wake_word
+            and (
+                _WAKEWORD_SERVER_CONFIG.no_use_client_wakeup_word
+                or not firmware_metadata.has_device_wake_word
+            )
+        )
+        return ServerMetadata(
+            has_server_wake_word=should_use_server_wake_word,
+            server_version=__version__,
         )
 
     def _handle_state_event(self, message: Any) -> None:

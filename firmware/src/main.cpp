@@ -340,6 +340,17 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
           rx.which_body == stackchan_websocket_v1_WebSocketMessage_server_metadata_tag)
       {
         applyServerMetadata(rx.body.server_metadata);
+        if (stateMachine.getState() == StateMachine::Idle)
+        {
+          if (shouldUseDeviceWakeWord())
+          {
+            wakeUpWord.begin();
+          }
+          else
+          {
+            wakeUpWord.end();
+          }
+        }
       }
       else
       {
@@ -405,7 +416,10 @@ void setup()
   // State entry/exit hooks
   stateMachine.addStateEntryEvent(StateMachine::Idle, [](StateMachine::State, StateMachine::State) {
     notifyCurrentState(StateMachine::Idle);
-    wakeUpWord.begin();
+    if (shouldUseDeviceWakeWord())
+    {
+      wakeUpWord.begin();
+    }
   });
   stateMachine.addStateExitEvent(StateMachine::Idle, [](StateMachine::State, StateMachine::State) {
     wakeUpWord.end();
@@ -443,7 +457,10 @@ void loop()
   switch (current)
   {
   case StateMachine::Idle:
-    wakeUpWord.loop();
+    if (shouldUseDeviceWakeWord())
+    {
+      wakeUpWord.loop();
+    }
     break;
   case StateMachine::Listening:
     listening.loop();

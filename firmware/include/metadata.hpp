@@ -28,6 +28,7 @@ extern ServerMetadataState g_server_metadata;
 
 void initializeFirmwareMetadata();
 void resetServerMetadata();
+bool shouldUseDeviceWakeWord();
 void setFirmwareMetadataMessage(
     stackchan_websocket_v1_WebSocketMessage &message,
     uint32_t seq);
