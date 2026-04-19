@@ -1,0 +1,42 @@
+name: PR PlatformIO Build
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - ".github/workflows/pr-platformio-build.yml"
+      - "platformio.ini"
+      - "platformio-m5stack.ini"
+      - "protobuf/**"
+      - "firmware/**"
+  pull_request:
+    paths:
+      - ".github/workflows/pr-platformio-build.yml"
+      - "platformio.ini"
+      - "platformio-m5stack.ini"
+      - "protobuf/**"
+      - "firmware/**"
+
+jobs:
+  platformio-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install PlatformIO
+        run: python -m pip install platformio
+
+      - name: Prepare firmware config
+        run: cp firmware/include/config.template.h firmware/include/config.h
+
+      - name: Build firmware
+        run: pio run --environment m5stack-cores3-m5unified

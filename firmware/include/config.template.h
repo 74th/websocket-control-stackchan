@@ -23,8 +23,8 @@
 // #define SERVO_SG90_Y_PIN 6
 // Center offset added to the logical 90-degree center
 // Positive values bias X to the right and Y upward; negative values bias X to the left and Y downward
-// #define SERVO_SG90_X_CENTER_OFFSET 0
-// #define SERVO_SG90_Y_CENTER_OFFSET 0
+#define SERVO_SG90_X_CENTER_OFFSET 0
+#define SERVO_SG90_Y_CENTER_OFFSET 0
 
 // -- using SCS0009 --
 // #define USE_SERVO_SCS0009 1
