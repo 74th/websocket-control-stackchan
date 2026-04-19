@@ -6,6 +6,7 @@
 #include <WebSocketsClient.h>
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <vector>
 #include "config.h"
 #include "../include/protocols.hpp"
@@ -37,9 +38,11 @@ static BodyServo servo;
 // Protocol types are defined in include/protocols.hpp
 namespace
 {
-uint16_t g_uplink_seq = 0;
+uint32_t g_uplink_seq = 0;
 uint32_t g_last_comm_ms = 0;
 constexpr uint32_t kCommTimeoutMs = 60000;
+stackchan_websocket_v1_WebSocketMessage g_tx_message = stackchan_websocket_v1_WebSocketMessage_init_zero;
+stackchan_websocket_v1_WebSocketMessage g_rx_message = stackchan_websocket_v1_WebSocketMessage_init_zero;
 
 void markCommunicationActive()
 {
@@ -64,36 +67,41 @@ void handleCommunicationTimeout()
   }
 }
 
-bool sendUplinkPacket(MessageKind kind, MessageType msgType, const uint8_t *payload, size_t payload_len)
+bool sendUplinkMessage(const stackchan_websocket_v1_WebSocketMessage &message)
 {
   if ((WiFi.status() != WL_CONNECTED) || !wsClient.isConnected())
   {
     return false;
   }
 
-  WsHeader header{};
-  header.kind = static_cast<uint8_t>(kind);
-  header.messageType = static_cast<uint8_t>(msgType);
-  header.reserved = 0;
-  header.seq = g_uplink_seq++;
-  header.payloadBytes = static_cast<uint16_t>(payload_len);
-
   std::vector<uint8_t> packet;
-  packet.resize(sizeof(WsHeader) + payload_len);
-  memcpy(packet.data(), &header, sizeof(WsHeader));
-  if (payload_len > 0 && payload != nullptr)
+  if (!encodeWebSocketMessage(message, packet))
   {
-    memcpy(packet.data() + sizeof(WsHeader), payload, payload_len);
+    return false;
   }
+
   wsClient.sendBIN(packet.data(), packet.size());
   markCommunicationActive();
   return true;
 }
 
+void appendInt16Le(std::vector<uint8_t> &payload, int16_t value)
+{
+  size_t start = payload.size();
+  payload.resize(start + sizeof(value));
+  memcpy(payload.data() + start, &value, sizeof(value));
+}
+
 void notifyWakeWordDetected()
 {
-  const uint8_t payload = 1; // detected
-  if (!sendUplinkPacket(MessageKind::WakeWordEvt, MessageType::DATA, &payload, sizeof(payload)))
+  auto &message = g_tx_message;
+  message = stackchan_websocket_v1_WebSocketMessage_init_zero;
+  message.kind = stackchan_websocket_v1_MessageKind_MESSAGE_KIND_WAKE_WORD_EVT;
+  message.message_type = stackchan_websocket_v1_MessageType_MESSAGE_TYPE_DATA;
+  message.seq = g_uplink_seq++;
+  message.which_body = stackchan_websocket_v1_WebSocketMessage_wake_word_evt_tag;
+  message.body.wake_word_evt.detected = true;
+  if (!sendUplinkMessage(message))
   {
     log_w("Failed to send WakeWordEvt");
   }
@@ -101,17 +109,29 @@ void notifyWakeWordDetected()
 
 void notifyCurrentState(StateMachine::State state)
 {
-  const uint8_t payload = static_cast<uint8_t>(state);
-  if (!sendUplinkPacket(MessageKind::StateEvt, MessageType::DATA, &payload, sizeof(payload)))
+  auto &message = g_tx_message;
+  message = stackchan_websocket_v1_WebSocketMessage_init_zero;
+  message.kind = stackchan_websocket_v1_MessageKind_MESSAGE_KIND_STATE_EVT;
+  message.message_type = stackchan_websocket_v1_MessageType_MESSAGE_TYPE_DATA;
+  message.seq = g_uplink_seq++;
+  message.which_body = stackchan_websocket_v1_WebSocketMessage_state_evt_tag;
+  message.body.state_evt.state = static_cast<stackchan_websocket_v1_StackchanState>(static_cast<uint8_t>(state));
+  if (!sendUplinkMessage(message))
   {
-    log_w("Failed to send StateEvt state=%u", static_cast<unsigned>(payload));
+    log_w("Failed to send StateEvt state=%u", static_cast<unsigned>(state));
   }
 }
 
 void notifySpeakDone()
 {
-  const uint8_t payload = 1; // done
-  if (!sendUplinkPacket(MessageKind::SpeakDoneEvt, MessageType::DATA, &payload, sizeof(payload)))
+  auto &message = g_tx_message;
+  message = stackchan_websocket_v1_WebSocketMessage_init_zero;
+  message.kind = stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SPEAK_DONE_EVT;
+  message.message_type = stackchan_websocket_v1_MessageType_MESSAGE_TYPE_DATA;
+  message.seq = g_uplink_seq++;
+  message.which_body = stackchan_websocket_v1_WebSocketMessage_speak_done_evt_tag;
+  message.body.speak_done_evt.done = true;
+  if (!sendUplinkMessage(message))
   {
     log_w("Failed to send SpeakDoneEvt");
   }
@@ -119,45 +139,84 @@ void notifySpeakDone()
 
 void notifyServoDone()
 {
-  const uint8_t payload = 1; // done
-  if (!sendUplinkPacket(MessageKind::ServoDoneEvt, MessageType::DATA, &payload, sizeof(payload)))
+  auto &message = g_tx_message;
+  message = stackchan_websocket_v1_WebSocketMessage_init_zero;
+  message.kind = stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVO_DONE_EVT;
+  message.message_type = stackchan_websocket_v1_MessageType_MESSAGE_TYPE_DATA;
+  message.seq = g_uplink_seq++;
+  message.which_body = stackchan_websocket_v1_WebSocketMessage_servo_done_evt_tag;
+  message.body.servo_done_evt.done = true;
+  if (!sendUplinkMessage(message))
   {
     log_w("Failed to send ServoDoneEvt");
   }
 }
 
-bool applyRemoteStateCommand(const uint8_t *body, size_t bodyLen)
+bool applyRemoteStateCommand(const stackchan_websocket_v1_StateCommand &command)
 {
-  if (body == nullptr || bodyLen < 1)
+  switch (command.state)
   {
-    log_w("StateCmd payload too short: %u", static_cast<unsigned>(bodyLen));
-    return false;
-  }
-
-  RemoteState target = static_cast<RemoteState>(body[0]);
-  switch (target)
-  {
-  case RemoteState::Idle:
+  case stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_IDLE:
     stateMachine.setState(StateMachine::Idle);
     return true;
-  case RemoteState::Listening:
+  case stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_LISTENING:
     stateMachine.setState(StateMachine::Listening);
     return true;
-  case RemoteState::Thinking:
+  case stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_THINKING:
     stateMachine.setState(StateMachine::Thinking);
     return true;
-  case RemoteState::Speaking:
+  case stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_SPEAKING:
     stateMachine.setState(StateMachine::Speaking);
     return true;
   default:
-    log_w("Unknown remote state: %u", static_cast<unsigned>(body[0]));
+    log_w("Unknown remote state");
     return false;
   }
 }
 
-bool applyServoCommand(const uint8_t *body, size_t bodyLen)
+bool applyServoCommand(const stackchan_websocket_v1_ServoCommandSequence &sequence)
 {
-  if (!servo.enqueueSequence(body, bodyLen))
+  if (sequence.commands_count > kProtoServoCommandMaxCount)
+  {
+    log_w("ServoCmd count too large: %u", static_cast<unsigned>(sequence.commands_count));
+    return false;
+  }
+
+  std::vector<uint8_t> payload;
+  payload.reserve(1 + sequence.commands_count * 4);
+  payload.push_back(static_cast<uint8_t>(sequence.commands_count));
+
+  for (pb_size_t i = 0; i < sequence.commands_count; ++i)
+  {
+    const auto &command = sequence.commands[i];
+    const auto op = command.op;
+
+    if (command.duration_ms < std::numeric_limits<int16_t>::min() ||
+        command.duration_ms > std::numeric_limits<int16_t>::max())
+    {
+      log_w("ServoCmd duration out of range at command=%u", static_cast<unsigned>(i));
+      return false;
+    }
+
+    payload.push_back(static_cast<uint8_t>(op));
+    if (op == stackchan_websocket_v1_ServoOperation_SERVO_OPERATION_SLEEP)
+    {
+      appendInt16Le(payload, static_cast<int16_t>(command.duration_ms));
+      continue;
+    }
+
+    if (command.angle < std::numeric_limits<int8_t>::min() ||
+        command.angle > std::numeric_limits<int8_t>::max())
+    {
+      log_w("ServoCmd angle out of range at command=%u", static_cast<unsigned>(i));
+      return false;
+    }
+
+    payload.push_back(static_cast<uint8_t>(static_cast<int8_t>(command.angle)));
+    appendInt16Le(payload, static_cast<int16_t>(command.duration_ms));
+  }
+
+  if (!servo.enqueueSequence(payload.data(), payload.size()))
   {
     log_w("Failed to apply servo command");
     return false;
@@ -202,49 +261,65 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
   case WStype_BIN:
   {
     markCommunicationActive();
-    if (length < sizeof(WsHeader))
+    auto &rx = g_rx_message;
+    rx = stackchan_websocket_v1_WebSocketMessage_init_zero;
+    if (!decodeWebSocketMessage(payload, length, rx))
     {
-      // M5.Display.println("WS bin too short");
-      log_i("WS bin too short: %d", (int)length);
+      log_i("WS protobuf decode failed: %d", (int)length);
       break;
     }
 
-    WsHeader rx{};
-    memcpy(&rx, payload, sizeof(WsHeader));
-    size_t rx_payload_len = length - sizeof(WsHeader);
-    if (rx_payload_len != rx.payloadBytes)
+    log_i("WS protobuf kind=%u len=%d", (unsigned)rx.kind, (int)length);
+
+    switch (rx.kind)
     {
-      // M5.Display.println("WS payload len mismatch");
-      log_i("WS payload len mismatch: expected=%u got=%u", (unsigned)rx.payloadBytes, (unsigned)rx_payload_len);
+    case stackchan_websocket_v1_MessageKind_MESSAGE_KIND_AUDIO_WAV:
+    {
+      if (rx.message_type == stackchan_websocket_v1_MessageType_MESSAGE_TYPE_START &&
+          rx.which_body == stackchan_websocket_v1_WebSocketMessage_audio_wav_start_tag)
+      {
+        speaking.handleWavStart(
+            rx.seq,
+            rx.body.audio_wav_start.sample_rate,
+            static_cast<uint16_t>(rx.body.audio_wav_start.channels));
+      }
+      else if (rx.message_type == stackchan_websocket_v1_MessageType_MESSAGE_TYPE_DATA &&
+               rx.which_body == stackchan_websocket_v1_WebSocketMessage_audio_wav_data_tag)
+      {
+        size_t body_len = getProtoAudioChunkSize(rx.body.audio_wav_data);
+        speaking.handleWavData(rx.seq, getProtoAudioChunkBytes(rx.body.audio_wav_data), body_len);
+      }
+      else if (rx.message_type == stackchan_websocket_v1_MessageType_MESSAGE_TYPE_END &&
+               rx.which_body == stackchan_websocket_v1_WebSocketMessage_audio_wav_end_tag)
+      {
+        speaking.handleWavEnd(rx.seq);
+      }
+      else
+      {
+        log_w("AudioWav protobuf body mismatch type=%u body=%u", (unsigned)rx.message_type, (unsigned)rx.which_body);
+      }
       break;
     }
-
-    const uint8_t *body = payload + sizeof(WsHeader);
-    log_i("WS bin kind=%u len=%d", (unsigned)rx.kind, (int)length);
-
-    switch (static_cast<MessageKind>(rx.kind))
-    {
-    case MessageKind::AudioWav:
-      speaking.handleWavMessage(rx, body, rx_payload_len);
-      break;
-    case MessageKind::StateCmd:
-      if (static_cast<MessageType>(rx.messageType) == MessageType::DATA)
+    case stackchan_websocket_v1_MessageKind_MESSAGE_KIND_STATE_CMD:
+      if (rx.message_type == stackchan_websocket_v1_MessageType_MESSAGE_TYPE_DATA &&
+          rx.which_body == stackchan_websocket_v1_WebSocketMessage_state_cmd_tag)
       {
-        applyRemoteStateCommand(body, rx_payload_len);
+        applyRemoteStateCommand(rx.body.state_cmd);
       }
       else
       {
-        log_w("StateCmd unsupported msgType=%u", static_cast<unsigned>(rx.messageType));
+        log_w("StateCmd protobuf body mismatch type=%u body=%u", (unsigned)rx.message_type, (unsigned)rx.which_body);
       }
       break;
-    case MessageKind::ServoCmd:
-      if (static_cast<MessageType>(rx.messageType) == MessageType::DATA)
+    case stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVO_CMD:
+      if (rx.message_type == stackchan_websocket_v1_MessageType_MESSAGE_TYPE_DATA &&
+          rx.which_body == stackchan_websocket_v1_WebSocketMessage_servo_cmd_tag)
       {
-        applyServoCommand(body, rx_payload_len);
+        applyServoCommand(rx.body.servo_cmd);
       }
       else
       {
-        log_w("ServoCmd unsupported msgType=%u", static_cast<unsigned>(rx.messageType));
+        log_w("ServoCmd protobuf body mismatch type=%u body=%u", (unsigned)rx.message_type, (unsigned)rx.which_body);
       }
       break;
     default:

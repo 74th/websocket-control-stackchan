@@ -2,47 +2,56 @@
 コーディングエージェント向け指示: このディレクトリにはプロトコルのみを記述し、CPP、Pythonの実装コードの例を記述する必要はありません。どんなプロトコルが実装されているか確認するために用います。
 -->
 
-# WebSocket バイナリプロトコル仕様
+# WebSocket protobuf プロトコル仕様
 
-このドキュメントは、CoreS3 ファームウェアと Python サーバーがやり取りする WebSocket バイナリプロトコルの現行実装をまとめたものです。
+このドキュメントは、CoreS3 ファームウェアと Python サーバーがやり取りする WebSocket プロトコルの現行実装をまとめたものです。
 
-## 共通ヘッダ
+現行実装では、1 回の WebSocket binary frame に 1 つの protobuf `WebSocketMessage` を格納します。
 
-共通ヘッダ `WsHeader` は `firmware/include/protocols.hpp` で定義されています。
+## protobuf 定義
 
-- packed
-- little-endian
-- 構造: `<B B B H H>`
+- proto file: `protobuf/websocket-message.proto`
+- package: `stackchan.websocket.v1`
+- top-level message: `WebSocketMessage`
+
+### `WebSocketMessage`
 
 | フィールド | 型 | 説明 |
 | --- | --- | --- |
-| `kind` | `uint8` | メッセージ種別 |
-| `messageType` | `uint8` | `1=START`, `2=DATA`, `3=END` |
-| `reserved` | `uint8` | 現在は常に `0` |
-| `seq` | `uint16` | 送信側でインクリメントするシーケンス番号 |
-| `payloadBytes` | `uint16` | ヘッダ直後に続く payload のバイト数 |
+| `kind` | `MessageKind` | メッセージ種別 |
+| `message_type` | `MessageType` | `START` / `DATA` / `END` |
+| `seq` | `uint32` | 送信側でインクリメントするシーケンス番号 |
+| `body` | `oneof` | `kind` / `message_type` に対応する typed body |
 
-### `kind` 一覧
+### `MessageKind` 一覧
 
-| kind | 名前 | 方向 | 用途 |
-| --- | --- | --- | --- |
-| `1` | `AudioPcm` | CoreS3 → Server | マイク音声 PCM ストリーム |
-| `2` | `AudioWav` | Server → CoreS3 | TTS 音声 PCM ストリーム |
-| `3` | `StateCmd` | Server → CoreS3 | 状態遷移指示 |
-| `4` | `WakeWordEvt` | CoreS3 → Server | ウェイクワード検出通知 |
-| `5` | `StateEvt` | CoreS3 → Server | 現在状態通知 |
-| `6` | `SpeakDoneEvt` | CoreS3 → Server | 音声再生完了通知 |
-| `7` | `ServoCmd` | Server → CoreS3 | サーボ動作シーケンス指示 |
-| `8` | `ServoDoneEvt` | CoreS3 → Server | サーボ動作完了通知 |
+| 名前 | 方向 | 用途 |
+| --- | --- | --- |
+| `AudioPcm` | CoreS3 → Server | マイク音声 PCM ストリーム |
+| `AudioWav` | Server → CoreS3 | TTS 音声 PCM ストリーム |
+| `StateCmd` | Server → CoreS3 | 状態遷移指示 |
+| `WakeWordEvt` | CoreS3 → Server | ウェイクワード検出通知 |
+| `StateEvt` | CoreS3 → Server | 現在状態通知 |
+| `SpeakDoneEvt` | CoreS3 → Server | 音声再生完了通知 |
+| `ServoCmd` | Server → CoreS3 | サーボ動作シーケンス指示 |
+| `ServoDoneEvt` | CoreS3 → Server | サーボ動作完了通知 |
 
-## `AudioPcm` (`kind=1`)
+### `MessageType` 一覧
+
+| 名前 | 用途 |
+| --- | --- |
+| `START` | ストリームまたはセグメント開始 |
+| `DATA` | データ本体 |
+| `END` | ストリームまたはセグメント終了 |
+
+## マイク入力 `AudioPcm`
 
 - 方向: CoreS3 → Server
 - フォーマット: PCM16LE / 16kHz / 1ch
-- シーケンス: `START` → `DATA` 複数回 → `END`
-- `START` payload: なし
-- `DATA` payload: PCM16LE 生データ
-- `END` payload: 現行ファームウェアではなし
+- シーケンス: `AudioPcmStart` → `AudioChunk` 複数回 → `AudioPcmEnd`
+- `START` body: `AudioPcmStart {}`
+- `DATA` body: `AudioChunk { bytes pcm_bytes; }`
+- `END` body: `AudioPcmEnd {}`
 
 ### 現行実装メモ
 
@@ -53,19 +62,20 @@
 - 無音判定は平均絶対振幅 `<= 200` が 3 秒継続したときに発火します。
 - 停止時は未送信サンプルを `DATA` で flush してから `END` を送ります。
 
-## `AudioWav` (`kind=2`)
+## スピーカ再生 `AudioWav`
 
 - 方向: Server → CoreS3
 - 名前は `AudioWav` ですが、実際に送っているのは WAV コンテナではなく PCM16LE ストリームです。
-- 1 セグメントの流れは `START` → `DATA` 複数回 → `END` です。
+- 1 セグメントの流れは `AudioWavStart` → `AudioChunk` 複数回 → `AudioWavEnd` です。
 
-### payload 形式
+### body 形式
 
-| messageType | payload |
+| messageType | body |
 | --- | --- |
-| `START` | `<uint32 sample_rate><uint16 channels>` |
-| `DATA` | PCM16LE 生データ |
-| `END` | なし |
+- `START` | `AudioWavStart { sample_rate, channels }` |
+| `DATA` | `AudioChunk { bytes pcm_bytes; }` |
+| `DATA` | `AudioChunk { pcm_bytes }` |
+| `END` | `AudioWavEnd {}` |
 
 ### 現行実装メモ
 
@@ -75,18 +85,18 @@
 - CoreS3 は 3 本の受信バッファを持ち、`END` 到達後に `M5.Speaker.playRaw()` で再生します。
 - `seq` の欠損は検知しますが、TCP 前提のため再送制御は行いません。
 
-## `StateCmd` (`kind=3`)
+## 状態指示 `StateCmd`
 
 - 方向: Server → CoreS3
 - `messageType`: `DATA` のみ
-- payload: 1 byte の target state id
+- body: `StateCommand { state }`
 
-| 値 | 状態 |
-| --- | --- |
-| `0` | `Idle` |
-| `1` | `Listening` |
-| `2` | `Thinking` |
-| `3` | `Speaking` |
+利用する状態名:
+
+- `Idle`
+- `Listening`
+- `Thinking`
+- `Speaking`
 
 ### 現行実装メモ
 
@@ -94,54 +104,53 @@
 - 音声 uplink の `END` を受けると、Server は `Thinking` を指示します。
 - `proxy.speak()` 完了後、Server は `Idle` を指示します。
 
-## `WakeWordEvt` (`kind=4`)
+## ウェイクワード検出 `WakeWordEvt`
 
 - 方向: CoreS3 → Server
 - `messageType`: `DATA` のみ
-- payload: 1 byte (`1=detected`)
+- body: `WakeWordEvent { detected }`
 - `Idle` 中のウェイクワード検出をサーバー側に通知します。
 - REST API の `POST /v1/stackchan/{ip}/wakeword` は、このイベントをサーバー内部で擬似発火させます。
 
-## `StateEvt` (`kind=5`)
+## 状態通知 `StateEvt`
 
 - 方向: CoreS3 → Server
 - `messageType`: `DATA` のみ
-- payload: 1 byte の current state id
+- body: `StateEvent { state }`
 
-| 値 | 状態 |
-| --- | --- |
-| `0` | `Idle` |
-| `1` | `Listening` |
-| `2` | `Thinking` |
-| `3` | `Speaking` |
+利用する状態名:
+
+- `Idle`
+- `Listening`
+- `Thinking`
+- `Speaking`
 
 - CoreS3 は状態遷移の entry hook で送信します。
 - WebSocket 切断中は `Disconnected` 状態になりますが、切断時は uplink 送信できないため `StateEvt` では通知されません。
 
-## `SpeakDoneEvt` (`kind=6`)
+## 発話完了通知 `SpeakDoneEvt`
 
 - 方向: CoreS3 → Server
 - `messageType`: `DATA` のみ
-- payload: 1 byte (`1=done`)
+- body: `SpeakDoneEvent { done }`
 - CoreS3 側の音声再生完了を通知します。
 - Server はこの通知を待って `proxy.speak()` を完了させます。
 
-## `ServoCmd` (`kind=7`)
+## サーボ動作指示 `ServoCmd`
 
 - 方向: Server → CoreS3
 - `messageType`: `DATA` のみ
-- payload はサーボ動作シーケンス全体です。
+- body: `ServoCommandSequence { commands }`
 
-### payload 構造
+### body 構造
 
-- 先頭 1 byte: `<uint8 command_count>`
-- 続いて `command_count` 個のコマンド
+- `commands` は最大 255 個まで（`protobuf/websocket-message.options` で nanopb の `max_count:255` を指定）
 
-| op | 名前 | payload |
-| --- | --- | --- |
-| `0` | `Sleep` | `<uint8 op><int16 duration_ms>` |
-| `1` | `MoveX` | `<uint8 op><int8 angle><int16 duration_ms>` |
-| `2` | `MoveY` | `<uint8 op><int8 angle><int16 duration_ms>` |
+| 名前 | `ServoCommand` のフィールド |
+| --- | --- |
+| `Sleep` | `op`, `duration_ms` |
+| `MoveX` | `op`, `angle`, `duration_ms` |
+| `MoveY` | `op`, `angle`, `duration_ms` |
 
 ### 現行実装メモ
 
@@ -150,10 +159,10 @@
 - `duration_ms <= 0` は即時反映になります。
 - 新しい `ServoCmd` を受けると、実行中シーケンスは置き換えられます。
 
-## `ServoDoneEvt` (`kind=8`)
+## サーボ動作完了通知 `ServoDoneEvt`
 
 - 方向: CoreS3 → Server
 - `messageType`: `DATA` のみ
-- payload: 1 byte (`1=done`)
+- body: `ServoDoneEvent { done }`
 - 直前に受信したサーボシーケンスの完了通知です。
 - Server は `proxy.wait_servo_complete()` でこの完了を待てます。
