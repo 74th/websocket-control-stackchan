@@ -5,6 +5,7 @@
 ## 全体像
 
 - CoreS3 側は `firmware/`、Python サーバー側は `stackchan_server/`。
+- WebSocket の on-wire 形式は手書きバイナリヘッダではなく `protobuf/websocket-message.proto` で定義した protobuf。
 - 音声 uplink は `AudioPcm`、音声 downlink は `AudioWav`（実体は raw PCM）。
 - サーバーは FastAPI を公開し、WebSocket と REST API の両方を持つ。
 - サーボ制御が追加済みで、WebSocket プロトコルには `ServoCmd` / `ServoDoneEvt` がある。
@@ -12,42 +13,49 @@
 ## 状態遷移の要点
 
 - ファームウェア状態: `Idle`, `Listening`, `Thinking`, `Speaking`, `Disconnected`
-- サーバーから指示できるのは `StateCmd` の `0..3` (`Idle`〜`Speaking`)
+- サーバーから指示できるのは `StateCmd` の `Idle` / `Listening` / `Thinking` / `Speaking`
 - `Disconnected` はファームウェア内部状態で、WebSocket 切断時に入る
 - `WakeWordEvt` を受けるか、REST API の wakeword 擬似発火で talk session が始まる
 
 ## WebSocket プロトコル要約
 
-- 共通ヘッダ: `WsHeader` (`<B B B H H>`, packed, little-endian)
+- 1 WebSocket binary frame = 1 protobuf `WebSocketMessage`
+- protobuf 定義: `protobuf/websocket-message.proto`
+- package: `stackchan.websocket.v1`
+- envelope fields
+  - `kind`
+  - `message_type`
+  - `seq`
+  - `oneof body`
 - `kind`
-  - `1=AudioPcm`
-  - `2=AudioWav`
-  - `3=StateCmd`
-  - `4=WakeWordEvt`
-  - `5=StateEvt`
-  - `6=SpeakDoneEvt`
-  - `7=ServoCmd`
-  - `8=ServoDoneEvt`
+  - `AudioPcm`
+  - `AudioWav`
+  - `StateCmd`
+  - `WakeWordEvt`
+  - `StateEvt`
+  - `SpeakDoneEvt`
+  - `ServoCmd`
+  - `ServoDoneEvt`
 - `messageType`
-  - `1=START`
-  - `2=DATA`
-  - `3=END`
+  - `START`
+  - `DATA`
+  - `END`
 
 ### 現行挙動
 
 - `AudioPcm`
   - PCM16LE / 16kHz / 1ch
-  - `START -> DATA* -> END`
+  - `AudioPcmStart -> AudioChunk* -> AudioPcmEnd`
   - `DATA` は 2000 samples（4000 bytes, 約 125ms）ごと
   - 無音 3 秒で自動終了
 - `AudioWav`
   - 名前に反して WAV コンテナではなく PCM ストリーム
-  - `START` payload は `<uint32 sample_rate><uint16 channels>`
+  - `AudioWavStart.sample_rate` / `AudioWavStart.channels` を送る
   - `DATA` chunk は既定 4096 bytes
   - 約 2 秒セグメントで送信し、2 本目は約 1 秒後に先行開始
 - `ServoCmd`
-  - payload: `<uint8 count><commands...>`
-  - op: `0=Sleep`, `1=MoveX`, `2=MoveY`
+  - `ServoCommandSequence.commands[]`
+  - op: `Sleep`, `MoveX`, `MoveY`
   - 新規コマンド受信時は実行中シーケンスを置き換える
 
 ## サーバー側 (`stackchan_server/`)
@@ -82,15 +90,16 @@
 
 - `src/main.cpp`
   - Wi-Fi 接続後、`/ws/stackchan` に接続
-  - `AudioWav`, `StateCmd`, `ServoCmd` を受信処理
+  - protobuf `WebSocketMessage` を decode して `AudioWav`, `StateCmd`, `ServoCmd` を受信処理
   - 通信が 60 秒止まると `Thinking` / `Speaking` から `Idle` に戻す
 - `src/listening.cpp`
   - マイク読み取り 256 サンプル単位
   - 2 秒リングバッファ
+  - protobuf の `AudioPcmStart/Data/End` を送信
   - 無音 3 秒で停止
 - `src/speaking.cpp`
-  - 3 本バッファで TTS セグメント受信
-  - `END` 後に `M5.Speaker.playRaw()` で再生
+  - 3 本バッファで protobuf `AudioWavStart/Data/End` を受信
+  - `AudioWavEnd` 後に `M5.Speaker.playRaw()` で再生
   - 再生完了時に `SpeakDoneEvt`
 - `src/servo.cpp`
   - `ServoCmd` を非同期実行
