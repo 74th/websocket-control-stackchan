@@ -227,11 +227,13 @@ class WsProxy:
         )
 
     async def listen_raw(self, duration: int = 3000) -> bytes:
-        return await self._listener.listen_raw(
+        raw_audio = await self._listener.listen_raw(
             duration_ms=duration,
             send_listen_command=self._send_listen_command,
             is_closed=lambda: self._closed,
         )
+        await self._wait_for_listening_finished(timeout_seconds=max(duration / 1000.0 + 2.0, 5.0))
+        return raw_audio
 
     async def send_state_command(self, state_id: int | FirmwareState) -> None:
         await self._send_state_command(state_id)
@@ -515,6 +517,22 @@ class WsProxy:
                 raise WebSocketDisconnect()
             if deadline and loop.time() >= deadline:
                 raise TimeoutError(f"Timed out waiting for {label}")
+            await asyncio.sleep(0.05)
+
+    async def _wait_for_listening_finished(
+        self,
+        *,
+        timeout_seconds: float | None,
+    ) -> None:
+        loop = asyncio.get_running_loop()
+        deadline = (loop.time() + timeout_seconds) if timeout_seconds else None
+        while True:
+            if self._current_firmware_state != FirmwareState.LISTENING:
+                return
+            if self._closed:
+                raise WebSocketDisconnect()
+            if deadline and loop.time() >= deadline:
+                raise TimeoutError("Timed out waiting for firmware to leave listening state")
             await asyncio.sleep(0.05)
 
     def _next_down_seq(self) -> int:

@@ -26,8 +26,10 @@ void WakeUpWord::begin()
 
 void WakeUpWord::end()
 {
-  M5.Mic.end();
   ESP_SR_M5.pause();
+  delay(10);
+  M5.Mic.end();
+  delay(20);
 }
 
 void WakeUpWord::feedAudio(const int16_t *samples, size_t count)
@@ -49,31 +51,6 @@ void WakeUpWord::loop()
   if (success)
   {
     feedAudio(audio_buf, kAudioSampleSize);
-
-    uint32_t now = millis();
-    if (now - last_log_time_ >= 1000)
-    {
-      int32_t sum = 0;
-      for (int i = 0; i < 10; i++)
-      {
-        sum += abs(audio_buf[i]);
-      }
-      log_i("idle loop: count=%lu, avg_level=%ld, errors=%lu, interval=%lu ms",
-            static_cast<unsigned long>(loop_count_),
-            static_cast<long>(sum / 10),
-            static_cast<unsigned long>(error_count_),
-            static_cast<unsigned long>(now - last_log_time_));
-      last_log_time_ = now;
-    }
-    loop_count_++;
-  }
-  else
-  {
-    error_count_++;
-    if (error_count_ % 100 == 0)
-    {
-      log_w("WARNING: M5.Mic.record failed, count=%lu", static_cast<unsigned long>(error_count_));
-    }
   }
 }
 

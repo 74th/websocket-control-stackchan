@@ -23,7 +23,17 @@ void Speaking::init()
 void Speaking::begin()
 {
   // 念のためマイクを停止し、再生に集中させる
+  uint8_t current_volume = M5.Speaker.getVolume();
   M5.Mic.end();
+  delay(20);
+  M5.Speaker.end();
+  delay(10);
+  bool speaker_ready = M5.Speaker.begin();
+  M5.Speaker.setVolume(current_volume);
+  if (!speaker_ready)
+  {
+    log_w("Failed to initialize speaker");
+  }
 }
 
 void Speaking::end()
@@ -32,7 +42,6 @@ void Speaking::end()
   {
     M5.Speaker.stop();
   }
-  M5.Speaker.end();
   reset();
 }
 
@@ -106,7 +115,12 @@ void Speaking::handleWavEnd(uint32_t seq)
     const int16_t *samples = reinterpret_cast<const int16_t *>(buf.data());
     size_t sample_len = buf.size() / sizeof(int16_t);
     bool stereo = channels_ > 1;
-    M5.Speaker.playRaw(samples, sample_len, sample_rate_, stereo, 1, 0);
+    bool accepted = M5.Speaker.playRaw(samples, sample_len, sample_rate_, stereo, 1, 0);
+    if (!accepted)
+    {
+      log_w("Failed to queue raw audio for playback");
+      playing_ = false;
+    }
   }
 }
 

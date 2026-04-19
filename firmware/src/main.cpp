@@ -46,6 +46,8 @@ constexpr int kToneChannel = 1;
 stackchan_websocket_v1_WebSocketMessage g_tx_message = stackchan_websocket_v1_WebSocketMessage_init_zero;
 stackchan_websocket_v1_WebSocketMessage g_rx_message = stackchan_websocket_v1_WebSocketMessage_init_zero;
 bool g_tone_playing = false;
+bool g_tone_restore_state_pending = false;
+StateMachine::State g_tone_restore_state = StateMachine::Idle;
 
 void markCommunicationActive()
 {
@@ -269,8 +271,25 @@ bool applyToneCommand(const stackchan_websocket_v1_ToneCommand &command)
     return false;
   }
 
+  StateMachine::State previous_state = stateMachine.getState();
+  if (previous_state != StateMachine::Speaking)
+  {
+    g_tone_restore_state = previous_state;
+    g_tone_restore_state_pending = true;
+    stateMachine.setState(StateMachine::Speaking);
+  }
+  else
+  {
+    g_tone_restore_state_pending = false;
+  }
+
   if (!M5.Speaker.tone(command.frequency, command.duration_ms, kToneChannel, true))
   {
+    if (g_tone_restore_state_pending)
+    {
+      stateMachine.setState(g_tone_restore_state);
+      g_tone_restore_state_pending = false;
+    }
     log_w(
         "Failed to start tone frequency=%.1f duration=%lu",
         command.frequency,
@@ -279,10 +298,6 @@ bool applyToneCommand(const stackchan_websocket_v1_ToneCommand &command)
   }
 
   g_tone_playing = true;
-  log_i(
-      "ToneCmd frequency=%.1f duration=%lu",
-      command.frequency,
-      static_cast<unsigned long>(command.duration_ms));
   return true;
 }
 
@@ -299,6 +314,11 @@ void pollTonePlayback()
   }
 
   g_tone_playing = false;
+  if (g_tone_restore_state_pending)
+  {
+    stateMachine.setState(g_tone_restore_state);
+    g_tone_restore_state_pending = false;
+  }
   notifyToneDone();
 }
 } // namespace

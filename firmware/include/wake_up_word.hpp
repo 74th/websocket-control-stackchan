@@ -33,9 +33,4 @@ private:
   StateMachine &state_;
   const int sample_rate_;
   std::function<void()> on_wake_word_detected_;
-
-  // Idle 時のログ用カウンタ
-  uint32_t loop_count_ = 0;
-  uint32_t error_count_ = 0;
-  uint32_t last_log_time_ = 0;
 };
