@@ -6,15 +6,25 @@ on:
       - main
     paths:
       - ".github/workflows/pr-lint-typecheck.yml"
+      - "Makefile"
+      - "platformio.ini"
+      - "platformio-m5stack.ini"
       - "pyproject.toml"
+      - "protobuf/**"
       - "uv.lock"
+      - "firmware/lib/generated_protobuf/**"
       - "stackchan_server/**"
       - "example_apps/**"
   pull_request:
     paths:
       - ".github/workflows/pr-lint-typecheck.yml"
+      - "Makefile"
+      - "platformio.ini"
+      - "platformio-m5stack.ini"
       - "pyproject.toml"
+      - "protobuf/**"
       - "uv.lock"
+      - "firmware/lib/generated_protobuf/**"
       - "stackchan_server/**"
       - "example_apps/**"
 
@@ -42,3 +52,14 @@ jobs:
 
       - name: ty
         run: uv run ty check stackchan_server example_apps
+
+      - name: Install PlatformIO
+        run: python -m pip install platformio
+
+      - name: Verify generated protobuf files are up to date
+        run: |
+          set -euo pipefail
+          pio pkg install -e m5stack-cores3-m5unified
+          make protobuf
+          git diff --stat -- stackchan_server/generated_protobuf firmware/lib/generated_protobuf
+          git diff --exit-code -- stackchan_server/generated_protobuf firmware/lib/generated_protobuf
