@@ -45,6 +45,12 @@ PB_BIND(stackchan_websocket_v1_ServoCommand, stackchan_websocket_v1_ServoCommand
 PB_BIND(stackchan_websocket_v1_ServoDoneEvent, stackchan_websocket_v1_ServoDoneEvent, AUTO)
 
 
+PB_BIND(stackchan_websocket_v1_ToneCommand, stackchan_websocket_v1_ToneCommand, AUTO)
+
+
+PB_BIND(stackchan_websocket_v1_ToneDoneEvent, stackchan_websocket_v1_ToneDoneEvent, AUTO)
+
+
 PB_BIND(stackchan_websocket_v1_FirmwareMetadata, stackchan_websocket_v1_FirmwareMetadata, AUTO)
 
 

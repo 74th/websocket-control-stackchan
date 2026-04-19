@@ -5,6 +5,7 @@
 .vscode/launch.json
 .vscode/ipch
 .log
+tmp/
 firmware/include/config.h
 recordings
 ._.DS_Store

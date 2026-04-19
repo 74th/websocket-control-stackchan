@@ -44,7 +44,10 @@ class ListenHandler:
         self._message_ready = asyncio.Event()
         self._message_error: Optional[Exception] = None
         self._transcript: Optional[str] = None
+        self._raw_audio: Optional[bytes] = None
         self._speech_stream: Optional[StreamingSpeechSession] = None
+        self._result_mode: Optional[str] = None
+        self._session_lock = asyncio.Lock()
 
     async def close(self) -> None:
         await self._abort_speech_stream()
@@ -52,43 +55,99 @@ class ListenHandler:
     async def listen(
         self,
         *,
+        send_listen_command: Callable[[int | None], Awaitable[None]],
         send_state_command: Callable[[int], Awaitable[None]],
         is_closed: Callable[[], bool],
         idle_state: int,
-        listening_state: int,
     ) -> str:
-        await send_state_command(listening_state)
+        async with self._session_lock:
+            self._prepare_wait("transcript")
+            await send_listen_command(None)
+            result = await self._wait_for_result(
+                is_closed=is_closed,
+                on_inactivity_timeout=lambda: send_state_command(idle_state),
+            )
+            assert isinstance(result, str), "listen expected transcript result"
+            return result
+
+    async def listen_raw(
+        self,
+        *,
+        duration_ms: int,
+        send_listen_command: Callable[[int | None], Awaitable[None]],
+        is_closed: Callable[[], bool],
+    ) -> bytes:
+        async with self._session_lock:
+            self._prepare_wait("raw")
+            await send_listen_command(duration_ms)
+            result = await self._wait_for_result(is_closed=is_closed)
+            assert not isinstance(result, str), "listen_raw expected raw audio result"
+            return result
+
+    def _prepare_wait(self, mode: str) -> None:
+        self._message_ready.clear()
+        self._message_error = None
+        self._transcript = None
+        self._raw_audio = None
+        self._result_mode = mode
+
+    async def _wait_for_result(
+        self,
+        *,
+        is_closed: Callable[[], bool],
+        on_inactivity_timeout: Optional[Callable[[], Awaitable[None]]] = None,
+    ) -> str | bytes:
         loop = asyncio.get_running_loop()
         last_counter = self._pcm_data_counter
         last_data_time = loop.time()
         while True:
             if self._message_error is not None:
                 err = self._message_error
-                self._message_error = None
+                self._reset_pending_result()
                 raise err
             if self._message_ready.is_set():
-                text = self._transcript or ""
-                self._transcript = None
-                self._message_ready.clear()
-                return text
+                if self._result_mode == "raw":
+                    raw_audio = self._raw_audio or b""
+                    self._reset_pending_result()
+                    return raw_audio
+
+                transcript = self._transcript or ""
+                self._reset_pending_result()
+                return transcript
             if is_closed():
+                self._reset_pending_result()
                 raise WebSocketDisconnect()
             if self._pcm_data_counter != last_counter:
                 last_counter = self._pcm_data_counter
                 last_data_time = loop.time()
             if (loop.time() - last_data_time) >= self.listen_audio_timeout_seconds:
-                if not is_closed():
-                    await send_state_command(idle_state)
+                if on_inactivity_timeout is not None and not is_closed():
+                    await on_inactivity_timeout()
+                self._reset_pending_result()
                 raise TimeoutError("Timed out after audio data inactivity from firmware")
             await asyncio.sleep(0.05)
 
+    def _reset_pending_result(self) -> None:
+        self._message_ready.clear()
+        self._message_error = None
+        self._transcript = None
+        self._raw_audio = None
+        self._result_mode = None
+
     async def handle_start(self, websocket: WebSocket) -> bool:
         logger.info("Received START")
+        if self._result_mode is None:
+            asyncio.create_task(
+                websocket.close(code=1003, reason="start received without pending listen request")
+            )
+            return False
         await self._abort_speech_stream()
         self._pcm_buffer = bytearray()
         self._streaming = True
         self._message_error = None
-        if isinstance(self.speech_recognizer, StreamingSpeechRecognizer):
+        if self._result_mode == "transcript" and isinstance(
+            self.speech_recognizer, StreamingSpeechRecognizer
+        ):
             try:
                 self._speech_stream = await self.speech_recognizer.start_stream()
             except Exception:
@@ -151,10 +210,25 @@ class ListenHandler:
             await websocket.close(code=1003, reason="invalid accumulated pcm length")
             return
 
-        await send_state_command(thinking_state)
-
         frames = len(self._pcm_buffer) // (self.audio_format.sample_width * self.audio_format.channels)
         duration_seconds = frames / float(self.audio_format.sample_rate_hz)
+        pcm_bytes = bytes(self._pcm_buffer)
+
+        if self._result_mode == "raw":
+            logger.info(
+                "Captured raw audio frames=%d duration=%.3fs bytes=%d",
+                frames,
+                duration_seconds,
+                len(pcm_bytes),
+            )
+            self._streaming = False
+            self._pcm_buffer = bytearray()
+            self._raw_audio = pcm_bytes
+            self._message_ready.set()
+            return
+
+        await send_state_command(thinking_state)
+
         ws_meta = {
             "sample_rate": self.audio_format.sample_rate_hz,
             "frames": frames,
@@ -162,7 +236,7 @@ class ListenHandler:
             "duration_seconds": round(duration_seconds, 3),
         }
         if self.debug_recording:
-            _filepath, filename = self._save_wav(bytes(self._pcm_buffer))
+            _filepath, filename = self._save_wav(pcm_bytes)
             ws_meta["text"] = f"Saved as {filename}"
             ws_meta["path"] = f"recordings/{filename}"
         else:
@@ -170,7 +244,7 @@ class ListenHandler:
 
         await websocket.send_json(ws_meta)
 
-        transcript = await self._transcribe_async(bytes(self._pcm_buffer))
+        transcript = await self._transcribe_async(pcm_bytes)
 
         self._streaming = False
         self._pcm_buffer = bytearray()

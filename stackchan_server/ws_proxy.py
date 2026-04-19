@@ -21,6 +21,7 @@ from .protobuf_ws import (
     encode_server_metadata_message,
     encode_servo_command_message,
     encode_state_command_message,
+    encode_tone_command_message,
     parse_websocket_message,
 )
 from .speak import SpeakHandler
@@ -144,6 +145,9 @@ class WsProxy:
         self._servo_done_counter = 0
         self._servo_sent_counter = 0
         self._pending_servo_wait_targets: deque[int] = deque()
+        self._tone_done_counter = 0
+        self._tone_sent_counter = 0
+        self._pending_tone_wait_targets: deque[int] = deque()
 
     @property
     def closed(self) -> bool:
@@ -173,10 +177,10 @@ class WsProxy:
 
     async def listen(self) -> str:
         return await self._listener.listen(
+            send_listen_command=self._send_listen_command,
             send_state_command=self.send_state_command,
             is_closed=lambda: self._closed,
             idle_state=FirmwareState.IDLE,
-            listening_state=FirmwareState.LISTENING,
         )
 
     async def speak(self, text: str) -> None:
@@ -185,6 +189,47 @@ class WsProxy:
             next_seq=self._next_down_seq,
             send_state_command=self.send_state_command,
             idle_state=FirmwareState.IDLE,
+            is_closed=lambda: self._closed,
+        )
+
+    async def tone(
+        self,
+        frequency: float,
+        duration: int,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> None:
+        previous_counter = self._tone_sent_counter
+        target_counter = previous_counter + 1
+        self._tone_sent_counter = target_counter
+        self._pending_tone_wait_targets.append(target_counter)
+        try:
+            await self.ws.send_bytes(
+                encode_tone_command_message(
+                    self._next_down_seq(),
+                    frequency=frequency,
+                    duration_ms=duration,
+                )
+            )
+        except Exception:
+            if (
+                self._pending_tone_wait_targets
+                and self._pending_tone_wait_targets[-1] == target_counter
+            ):
+                self._pending_tone_wait_targets.pop()
+            self._tone_sent_counter = previous_counter
+            raise
+
+        await self.wait_tone_complete(
+            timeout_seconds=max((float(duration) / 1000.0) + 1.0, 5.0)
+            if timeout_seconds is None
+            else timeout_seconds
+        )
+
+    async def listen_raw(self, duration: int = 3000) -> bytes:
+        return await self._listener.listen_raw(
+            duration_ms=duration,
+            send_listen_command=self._send_listen_command,
             is_closed=lambda: self._closed,
         )
 
@@ -224,6 +269,20 @@ class WsProxy:
             timeout_seconds=timeout_seconds,
             is_closed=lambda: self._closed,
             label="servo completed event",
+        )
+
+    async def wait_tone_complete(self, timeout_seconds: float | None = 30.0) -> None:
+        target_counter = (
+            self._pending_tone_wait_targets.popleft()
+            if self._pending_tone_wait_targets
+            else self._tone_done_counter + 1
+        )
+        await self._wait_for_counter(
+            current=lambda: self._tone_done_counter,
+            min_counter=target_counter,
+            timeout_seconds=timeout_seconds,
+            is_closed=lambda: self._closed,
+            label="tone completed event",
         )
 
     async def start(self) -> None:
@@ -307,6 +366,10 @@ class WsProxy:
 
                 if message.kind == ws_pb2.MESSAGE_KIND_SERVO_DONE_EVT:
                     self._handle_servo_done_event(message)
+                    continue
+
+                if message.kind == ws_pb2.MESSAGE_KIND_TONE_DONE_EVT:
+                    self._handle_tone_done_event(message)
                     continue
 
                 await self.ws.close(code=1003, reason="unsupported kind")
@@ -410,9 +473,28 @@ class WsProxy:
         self._servo_done_counter += 1
         logger.info("Received servo done event")
 
+    def _handle_tone_done_event(self, message: Any) -> None:
+        if message.message_type != ws_pb2.MESSAGE_TYPE_DATA:
+            return
+        if message.WhichOneof("body") != "tone_done_evt":
+            return
+        if not message.tone_done_evt.done:
+            return
+        self._tone_done_counter += 1
+        logger.info("Received tone done event")
+
     async def _send_state_command(self, state_id: int | FirmwareState) -> None:
         await self.ws.send_bytes(
             encode_state_command_message(self._next_down_seq(), int(state_id))
+        )
+
+    async def _send_listen_command(self, duration_ms: int | None) -> None:
+        await self.ws.send_bytes(
+            encode_state_command_message(
+                self._next_down_seq(),
+                int(FirmwareState.LISTENING),
+                listening_duration_ms=duration_ms,
+            )
         )
 
     async def _wait_for_counter(

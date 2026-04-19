@@ -31,6 +31,8 @@ message WebSocketMessage {
     ServoDoneEvent servo_done_evt = 35;
     FirmwareMetadata firmware_metadata = 36;
     ServerMetadata server_metadata = 37;
+    ToneCommand tone_cmd = 38;
+    ToneDoneEvent tone_done_evt = 39;
   }
 }
 
@@ -46,6 +48,8 @@ enum MessageKind {
   MESSAGE_KIND_SERVO_DONE_EVT = 8;
   MESSAGE_KIND_FIRMWARE_METADATA = 9;
   MESSAGE_KIND_SERVER_METADATA = 10;
+  MESSAGE_KIND_TONE_CMD = 11;
+  MESSAGE_KIND_TONE_DONE_EVT = 12;
 }
 
 enum MessageType {
@@ -99,6 +103,7 @@ message AudioChunk {
 
 message StateCommand {
   StackchanState state = 1;
+  uint32 listening_duration_ms = 2; // used when state=LISTENING, 0 means silence-based stop
 }
 
 message WakeWordEvent {
@@ -124,6 +129,15 @@ message ServoCommand {
 }
 
 message ServoDoneEvent {
+  bool done = 1;
+}
+
+message ToneCommand {
+  float frequency = 1;
+  uint32 duration_ms = 2;
+}
+
+message ToneDoneEvent {
   bool done = 1;
 }
 

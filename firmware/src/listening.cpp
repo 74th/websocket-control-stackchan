@@ -49,6 +49,7 @@ void Listening::end()
 {
   stopStreaming();
   M5.Mic.end();
+  fixed_duration_ms_ = 0;
 }
 
 bool Listening::startStreaming()
@@ -57,6 +58,7 @@ bool Listening::startStreaming()
   seq_counter_ = 0;
   last_level_ = 0;
   silence_since_ms_ = 0;
+  stream_started_ms_ = millis();
   streaming_ = true;
   return sendPacket(stackchan_websocket_v1_MessageType_MESSAGE_TYPE_START, nullptr, 0);
 }
@@ -128,10 +130,18 @@ void Listening::loop()
     }
   }
 
-  // 無音が3秒続いたら終了
-  if (shouldStopForSilence())
+  // 固定時間録音 or 無音が3秒続いたら終了
+  if ((fixed_duration_ms_ > 0 && shouldStopForFixedDuration()) ||
+      (fixed_duration_ms_ == 0 && shouldStopForSilence()))
   {
-    log_i("Auto stop: silence detected (avg=%ld)", static_cast<long>(last_level_));
+    if (fixed_duration_ms_ > 0)
+    {
+      log_i("Auto stop: fixed duration reached (%lu ms)", static_cast<unsigned long>(fixed_duration_ms_));
+    }
+    else
+    {
+      log_i("Auto stop: silence detected (avg=%ld)", static_cast<long>(last_level_));
+    }
     if (!stopStreaming())
     {
       log_i("WS send failed (tail/end)");
@@ -185,6 +195,22 @@ bool Listening::shouldStopForSilence() const
 
   uint32_t elapsed = millis() - silence_since_ms_;
   return elapsed >= kSilenceDurationMs;
+}
+
+void Listening::setFixedDurationMs(uint32_t durationMs)
+{
+  fixed_duration_ms_ = durationMs;
+}
+
+bool Listening::shouldStopForFixedDuration() const
+{
+  if (fixed_duration_ms_ == 0 || stream_started_ms_ == 0)
+  {
+    return false;
+  }
+
+  uint32_t elapsed = millis() - stream_started_ms_;
+  return elapsed >= fixed_duration_ms_;
 }
 
 bool Listening::sendPacket(stackchan_websocket_v1_MessageType type, const int16_t *samples, size_t sampleCount)

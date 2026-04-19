@@ -92,13 +92,46 @@ def encode_audio_wav_end_message(seq: int) -> bytes:
     return message.SerializeToString()
 
 
-def encode_state_command_message(seq: int, state_id: int) -> bytes:
+def encode_state_command_message(
+    seq: int,
+    state_id: int,
+    *,
+    listening_duration_ms: int | None = None,
+) -> bytes:
     message = _new_message(
         ws_pb2.MESSAGE_KIND_STATE_CMD,
         ws_pb2.MESSAGE_TYPE_DATA,
         seq,
     )
     message.state_cmd.state = int(state_id)
+    if listening_duration_ms is not None:
+        _ensure_range(
+            int(listening_duration_ms),
+            minimum=0,
+            maximum=0xFFFFFFFF,
+            label="listening_duration_ms",
+        )
+        message.state_cmd.listening_duration_ms = int(listening_duration_ms)
+    return message.SerializeToString()
+
+
+def encode_tone_command_message(seq: int, frequency: float, duration_ms: int) -> bytes:
+    if float(frequency) <= 0:
+        raise ValueError(f"frequency must be positive: {frequency}")
+    _ensure_range(
+        int(duration_ms),
+        minimum=1,
+        maximum=0xFFFFFFFF,
+        label="tone duration_ms",
+    )
+
+    message = _new_message(
+        ws_pb2.MESSAGE_KIND_TONE_CMD,
+        ws_pb2.MESSAGE_TYPE_DATA,
+        seq,
+    )
+    message.tone_cmd.frequency = float(frequency)
+    message.tone_cmd.duration_ms = int(duration_ms)
     return message.SerializeToString()
 
 
@@ -176,6 +209,7 @@ __all__ = [
     "encode_audio_pcm_data_message",
     "encode_audio_pcm_end_message",
     "encode_audio_pcm_start_message",
+    "encode_tone_command_message",
     "encode_audio_wav_data_message",
     "encode_audio_wav_end_message",
     "encode_audio_wav_start_message",

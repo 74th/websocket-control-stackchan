@@ -34,6 +34,10 @@ public:
   // 無音が所定時間続いているか判定
   bool shouldStopForSilence() const;
 
+  // 固定時間録音モードを設定（0で通常の無音停止モード）
+  void setFixedDurationMs(uint32_t durationMs);
+  bool shouldStopForFixedDuration() const;
+
 private:
   void updateLevelStats(const int16_t *samples, size_t sampleCount);
   bool sendPacket(stackchan_websocket_v1_MessageType type, const int16_t *samples, size_t sampleCount);
@@ -60,6 +64,8 @@ private:
   // 無音判定関連
   int32_t last_level_ = 0;
   uint32_t silence_since_ms_ = 0;
+  uint32_t stream_started_ms_ = 0;
+  uint32_t fixed_duration_ms_ = 0;
   static constexpr int32_t kSilenceLevelThreshold = 200;     // 平均絶対値がこの値以下を無音とみなす
   static constexpr uint32_t kSilenceDurationMs = 3000;        // 無音とみなす継続時間
 };

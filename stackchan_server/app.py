@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 from logging import getLogger
-from typing import Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from .speech_recognition import create_speech_recognizer
@@ -35,6 +35,7 @@ class StackChanApp:
         self.fastapi = FastAPI(title="StackChan WebSocket Server")
         self._setup_fn: Optional[Callable[[WsProxy], Awaitable[None]]] = None
         self._talk_session_fn: Optional[Callable[[WsProxy], Awaitable[None]]] = None
+        self._webapi_paths: set[str] = set()
         self._proxies: dict[str, WsProxy] = {}
         self._proxies_lock = asyncio.Lock()
 
@@ -78,6 +79,39 @@ class StackChanApp:
     def talk_session(self, fn: Callable[["WsProxy"], Awaitable[None]]):
         self._talk_session_fn = fn
         return fn
+
+    def webapi(
+        self, path: str
+    ) -> Callable[[Callable[["WsProxy", dict[str, Any]], Awaitable[Any]]], Callable[["WsProxy", dict[str, Any]], Awaitable[Any]]]:
+        normalized_path = path if path.startswith("/") else f"/{path}"
+        route_path = f"/v1/stackchan/{{stackchan_ip}}{normalized_path}"
+
+        def decorator(
+            fn: Callable[["WsProxy", dict[str, Any]], Awaitable[Any]]
+        ) -> Callable[["WsProxy", dict[str, Any]], Awaitable[Any]]:
+            if route_path in self._webapi_paths:
+                raise ValueError(f"webapi route already registered: {route_path}")
+            route_name = getattr(fn, "__name__", "webapi_handler")
+
+            async def _webapi_handler(
+                stackchan_ip: str,
+                body: dict[str, Any] | None = Body(default=None),
+            ) -> Any:
+                proxy = await self._get_proxy(stackchan_ip)
+                if proxy is None:
+                    raise HTTPException(status_code=404, detail="stackchan not connected")
+                return await fn(proxy, body or {})
+
+            self.fastapi.add_api_route(
+                route_path,
+                _webapi_handler,
+                methods=["GET"],
+                name=f"webapi_{route_name}",
+            )
+            self._webapi_paths.add(route_path)
+            return fn
+
+        return decorator
 
     async def _handle_ws(self, websocket: WebSocket) -> None:
         await websocket.accept()

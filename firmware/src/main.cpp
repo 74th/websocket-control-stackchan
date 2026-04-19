@@ -42,8 +42,10 @@ namespace
 uint32_t g_uplink_seq = 0;
 uint32_t g_last_comm_ms = 0;
 constexpr uint32_t kCommTimeoutMs = 60000;
+constexpr int kToneChannel = 1;
 stackchan_websocket_v1_WebSocketMessage g_tx_message = stackchan_websocket_v1_WebSocketMessage_init_zero;
 stackchan_websocket_v1_WebSocketMessage g_rx_message = stackchan_websocket_v1_WebSocketMessage_init_zero;
+bool g_tone_playing = false;
 
 void markCommunicationActive()
 {
@@ -163,20 +165,39 @@ void notifyServoDone()
   }
 }
 
+void notifyToneDone()
+{
+  auto &message = g_tx_message;
+  message = stackchan_websocket_v1_WebSocketMessage_init_zero;
+  message.kind = stackchan_websocket_v1_MessageKind_MESSAGE_KIND_TONE_DONE_EVT;
+  message.message_type = stackchan_websocket_v1_MessageType_MESSAGE_TYPE_DATA;
+  message.seq = g_uplink_seq++;
+  message.which_body = stackchan_websocket_v1_WebSocketMessage_tone_done_evt_tag;
+  message.body.tone_done_evt.done = true;
+  if (!sendUplinkMessage(message))
+  {
+    log_w("Failed to send ToneDoneEvt");
+  }
+}
+
 bool applyRemoteStateCommand(const stackchan_websocket_v1_StateCommand &command)
 {
   switch (command.state)
   {
   case stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_IDLE:
+    listening.setFixedDurationMs(0);
     stateMachine.setState(StateMachine::Idle);
     return true;
   case stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_LISTENING:
+    listening.setFixedDurationMs(command.listening_duration_ms);
     stateMachine.setState(StateMachine::Listening);
     return true;
   case stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_THINKING:
+    listening.setFixedDurationMs(0);
     stateMachine.setState(StateMachine::Thinking);
     return true;
   case stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_SPEAKING:
+    listening.setFixedDurationMs(0);
     stateMachine.setState(StateMachine::Speaking);
     return true;
   default:
@@ -233,6 +254,52 @@ bool applyServoCommand(const stackchan_websocket_v1_ServoCommandSequence &sequen
     return false;
   }
   return true;
+}
+
+bool applyToneCommand(const stackchan_websocket_v1_ToneCommand &command)
+{
+  if (command.frequency <= 0.0f)
+  {
+    log_w("ToneCmd frequency must be positive");
+    return false;
+  }
+  if (command.duration_ms == 0)
+  {
+    log_w("ToneCmd duration must be positive");
+    return false;
+  }
+
+  if (!M5.Speaker.tone(command.frequency, command.duration_ms, kToneChannel, true))
+  {
+    log_w(
+        "Failed to start tone frequency=%.1f duration=%lu",
+        command.frequency,
+        static_cast<unsigned long>(command.duration_ms));
+    return false;
+  }
+
+  g_tone_playing = true;
+  log_i(
+      "ToneCmd frequency=%.1f duration=%lu",
+      command.frequency,
+      static_cast<unsigned long>(command.duration_ms));
+  return true;
+}
+
+void pollTonePlayback()
+{
+  if (!g_tone_playing)
+  {
+    return;
+  }
+
+  if (M5.Speaker.isPlaying(kToneChannel) != 0)
+  {
+    return;
+  }
+
+  g_tone_playing = false;
+  notifyToneDone();
 }
 } // namespace
 
@@ -333,6 +400,17 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
       else
       {
         log_w("ServoCmd protobuf body mismatch type=%u body=%u", (unsigned)rx.message_type, (unsigned)rx.which_body);
+      }
+      break;
+    case stackchan_websocket_v1_MessageKind_MESSAGE_KIND_TONE_CMD:
+      if (rx.message_type == stackchan_websocket_v1_MessageType_MESSAGE_TYPE_DATA &&
+          rx.which_body == stackchan_websocket_v1_WebSocketMessage_tone_cmd_tag)
+      {
+        applyToneCommand(rx.body.tone_cmd);
+      }
+      else
+      {
+        log_w("ToneCmd protobuf body mismatch type=%u body=%u", (unsigned)rx.message_type, (unsigned)rx.which_body);
       }
       break;
     case stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVER_METADATA:
@@ -452,6 +530,7 @@ void loop()
   wsClient.loop();
   handleCommunicationTimeout();
   servo.loop();
+  pollTonePlayback();
 
   StateMachine::State current = stateMachine.getState();
   switch (current)
