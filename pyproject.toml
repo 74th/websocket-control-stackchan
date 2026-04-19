@@ -17,6 +17,7 @@ dependencies = [
     "python-dotenv>=1.2.1",
     "pydantic-settings>=2.13.1",
     "protobuf>=6.33.3",
+    "openwakeword>=0.4.0",
 ]
 
 [dependency-groups]

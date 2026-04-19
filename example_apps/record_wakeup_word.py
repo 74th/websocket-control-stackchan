@@ -47,28 +47,40 @@ async def talk_session(proxy: WsProxy):
 
 @app.webapi("/record_wakeup_word")
 async def record_wakeup_word(proxy: WsProxy, args: dict):
-    duration_ms = int(args.get("duration_ms", args.get("duration", 3000)))
+    duration_ms = 2500
     logger.info("Recording wakeup word duration_ms=%d", duration_ms)
     await proxy.speak(
         "これからウェイクアップワードの録音を開始します。ピッと鳴ったら、ウェイクアップワードを話してください。"
     )
-    await proxy.tone(4000, 200)
-    raw_audio = await proxy.listen_raw(duration=duration_ms)
-    await asyncio.sleep(0.5)
-    await proxy.tone(1000, 200)
+    await proxy.speak(
+        "50回録音します。トーンを変えたり、ちょっと遠くから話したりして、いろいろなパターンを録音してください。"
+    )
 
     output_dir = Path("tmp")
     output_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"wakeup_word_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S_%f')}.wav"
-    filepath = output_dir / filename
 
-    with wave.open(str(filepath), "wb") as wav_fp:
-        wav_fp.setnchannels(LISTEN_AUDIO_FORMAT.channels)
-        wav_fp.setsampwidth(LISTEN_AUDIO_FORMAT.sample_width)
-        wav_fp.setframerate(LISTEN_AUDIO_FORMAT.sample_rate_hz)
-        wav_fp.writeframes(raw_audio)
+    for i in range(50):
+        if i > 0 and i % 10 == 0:
+            await proxy.speak(f"あと{50 - i}回")
 
-    logger.info("Saved wakeup word recording to %s", filepath)
+        await proxy.tone(2000, 200)
+        raw_audio = await proxy.listen_raw(duration=duration_ms)
+
+        filename = f"wakeup_word_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S_%f')}.wav"
+        filepath = output_dir / filename
+
+        with wave.open(str(filepath), "wb") as wav_fp:
+            wav_fp.setnchannels(LISTEN_AUDIO_FORMAT.channels)
+            wav_fp.setsampwidth(LISTEN_AUDIO_FORMAT.sample_width)
+            wav_fp.setframerate(LISTEN_AUDIO_FORMAT.sample_rate_hz)
+            wav_fp.writeframes(raw_audio)
+
+        logger.info("Saved wakeup word recording to %s", filepath)
+
+    await proxy.speak(
+        "お疲れ様でした"
+    )
+
     return {
         "path": str(filepath),
         "bytes": len(raw_audio),
