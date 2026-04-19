@@ -4,6 +4,7 @@ import asyncio
 import os
 from collections import deque
 from contextlib import suppress
+from dataclasses import dataclass
 from enum import IntEnum, StrEnum
 from logging import getLogger
 from pathlib import Path
@@ -11,10 +12,13 @@ from typing import Any, Literal, Optional, Sequence, TypeAlias
 
 from fastapi import WebSocket, WebSocketDisconnect
 from google.protobuf.message import DecodeError
+from pydantic_settings import BaseSettings
 
+from . import __version__
 from .generated_protobuf import websocket_message_pb2 as _ws_pb2
 from .listen import EmptyTranscriptError, ListenHandler, TimeoutError
 from .protobuf_ws import (
+    encode_server_metadata_message,
     encode_servo_command_message,
     encode_state_command_message,
     parse_websocket_message,
@@ -41,6 +45,17 @@ _LISTEN_AUDIO_TIMEOUT_SECONDS = 10.0
 _DEBUG_RECORDING_ENABLED = os.getenv("DEBUG_RECODING") == "1"
 
 
+class _WakeWordServerConfig(BaseSettings):
+    no_use_client_wakeup_word: bool = False
+    use_open_wake_word: bool = False
+
+    class Config:
+        env_prefix = "STACKCHAN_"
+
+
+_WAKEWORD_SERVER_CONFIG = _WakeWordServerConfig()
+
+
 class FirmwareState(IntEnum):
     IDLE = 0
     LISTENING = 1
@@ -62,6 +77,24 @@ ServoMoveCommand: TypeAlias = tuple[
 ]
 ServoSleepCommand: TypeAlias = tuple[Literal["sleep"] | ServoWaitType, int]
 ServoCommand: TypeAlias = ServoMoveCommand | ServoSleepCommand
+
+
+@dataclass(frozen=True)
+class FirmwareMetadata:
+    device_type: int
+    display_width: int
+    display_height: int
+    has_device_wake_word: bool
+    has_led: bool
+    servo_type: int
+    supports_audio_duplex: bool
+    firmware_version: str
+
+
+@dataclass(frozen=True)
+class ServerMetadata:
+    has_server_wake_word: bool
+    server_version: str
 
 
 class WsProxy:
@@ -99,6 +132,12 @@ class WsProxy:
 
         self._receiving_task: Optional[asyncio.Task] = None
         self._closed = False
+
+        self.firmware_metadata: FirmwareMetadata | None = None
+        self.server_metadata = ServerMetadata(
+            has_server_wake_word=False,
+            server_version=__version__,
+        )
 
         self._down_seq = 0
         self._current_firmware_state: FirmwareState = FirmwareState.IDLE
@@ -254,6 +293,10 @@ class WsProxy:
                     self._handle_wakeword_event(message)
                     continue
 
+                if message.kind == ws_pb2.MESSAGE_KIND_FIRMWARE_METADATA:
+                    await self._handle_firmware_metadata(message)
+                    continue
+
                 if message.kind == ws_pb2.MESSAGE_KIND_STATE_EVT:
                     self._handle_state_event(message)
                     continue
@@ -282,6 +325,58 @@ class WsProxy:
             return
         logger.info("Received wakeword event")
         self._wakeword_event.set()
+
+    async def _handle_firmware_metadata(self, message: Any) -> None:
+        if message.message_type != ws_pb2.MESSAGE_TYPE_DATA:
+            return
+        if message.WhichOneof("body") != "firmware_metadata":
+            return
+
+        metadata = message.firmware_metadata
+        self.firmware_metadata = FirmwareMetadata(
+            device_type=int(metadata.device_type),
+            display_width=int(metadata.display_width),
+            display_height=int(metadata.display_height),
+            has_device_wake_word=bool(metadata.has_device_wake_word),
+            has_led=bool(metadata.has_led),
+            servo_type=int(metadata.servo_type),
+            supports_audio_duplex=bool(metadata.supports_audio_duplex),
+            firmware_version=metadata.firmware_version,
+        )
+        logger.info(
+            "Received firmware metadata device_type=%d display=%dx%d wakeword=%s led=%s servo_type=%d duplex=%s version=%s",
+            self.firmware_metadata.device_type,
+            self.firmware_metadata.display_width,
+            self.firmware_metadata.display_height,
+            self.firmware_metadata.has_device_wake_word,
+            self.firmware_metadata.has_led,
+            self.firmware_metadata.servo_type,
+            self.firmware_metadata.supports_audio_duplex,
+            self.firmware_metadata.firmware_version,
+        )
+        self.server_metadata = self._build_server_metadata(self.firmware_metadata)
+        await self.ws.send_bytes(
+            encode_server_metadata_message(
+                self._next_down_seq(),
+                has_server_wake_word=self.server_metadata.has_server_wake_word,
+                server_version=self.server_metadata.server_version,
+            )
+        )
+
+    def _build_server_metadata(
+        self, firmware_metadata: FirmwareMetadata
+    ) -> ServerMetadata:
+        should_use_server_wake_word = (
+            _WAKEWORD_SERVER_CONFIG.use_open_wake_word
+            and (
+                _WAKEWORD_SERVER_CONFIG.no_use_client_wakeup_word
+                or not firmware_metadata.has_device_wake_word
+            )
+        )
+        return ServerMetadata(
+            has_server_wake_word=should_use_server_wake_word,
+            server_version=__version__,
+        )
 
     def _handle_state_event(self, message: Any) -> None:
         if message.message_type != ws_pb2.MESSAGE_TYPE_DATA:
@@ -348,7 +443,9 @@ class WsProxy:
 
 __all__ = [
     "WsProxy",
+    "FirmwareMetadata",
     "FirmwareState",
+    "ServerMetadata",
     "TimeoutError",
     "EmptyTranscriptError",
     "ServoCommand",

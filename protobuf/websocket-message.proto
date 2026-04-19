@@ -29,6 +29,8 @@ message WebSocketMessage {
     SpeakDoneEvent speak_done_evt = 33;
     ServoCommandSequence servo_cmd = 34;
     ServoDoneEvent servo_done_evt = 35;
+    FirmwareMetadata firmware_metadata = 36;
+    ServerMetadata server_metadata = 37;
   }
 }
 
@@ -42,6 +44,8 @@ enum MessageKind {
   MESSAGE_KIND_SPEAK_DONE_EVT = 6;
   MESSAGE_KIND_SERVO_CMD = 7;
   MESSAGE_KIND_SERVO_DONE_EVT = 8;
+  MESSAGE_KIND_FIRMWARE_METADATA = 9;
+  MESSAGE_KIND_SERVER_METADATA = 10;
 }
 
 enum MessageType {
@@ -62,6 +66,20 @@ enum ServoOperation {
   SERVO_OPERATION_SLEEP = 0;
   SERVO_OPERATION_MOVE_X = 1;
   SERVO_OPERATION_MOVE_Y = 2;
+}
+
+enum DeviceType {
+  DEVICE_TYPE_UNSPECIFIED = 0;
+  DEVICE_TYPE_M5STACK_CORES3 = 1;
+  DEVICE_TYPE_M5ATOM_S3R = 2;
+  DEVICE_TYPE_M5ATOM_ECHOS3R = 3;
+}
+
+enum ServoType {
+  SERVO_TYPE_UNSPECIFIED = 0;
+  SERVO_TYPE_NONE = 1;
+  SERVO_TYPE_SG90 = 2;
+  SERVO_TYPE_SCS0009 = 3;
 }
 
 message AudioPcmStart {}
@@ -107,4 +125,20 @@ message ServoCommand {
 
 message ServoDoneEvent {
   bool done = 1;
+}
+
+message FirmwareMetadata {
+  DeviceType device_type = 1;
+  uint32 display_width = 2;
+  uint32 display_height = 3;
+  bool has_device_wake_word = 4;
+  bool has_led = 5;
+  ServoType servo_type = 6;
+  bool supports_audio_duplex = 7;
+  string firmware_version = 8;
+}
+
+message ServerMetadata {
+  bool has_server_wake_word = 1;
+  string server_version = 2;
 }
