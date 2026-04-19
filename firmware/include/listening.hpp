@@ -36,7 +36,7 @@ public:
 
 private:
   void updateLevelStats(const int16_t *samples, size_t sampleCount);
-  bool sendPacket(MessageType type, const int16_t *samples, size_t sampleCount);
+  bool sendPacket(stackchan_websocket_v1_MessageType type, const int16_t *samples, size_t sampleCount);
   void ringPush(const int16_t *src, size_t samples);
   size_t ringPop(int16_t *dst, size_t samples);
 

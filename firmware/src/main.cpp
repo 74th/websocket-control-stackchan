@@ -96,8 +96,8 @@ void notifyWakeWordDetected()
 {
   auto &message = g_tx_message;
   message = stackchan_websocket_v1_WebSocketMessage_init_zero;
-  message.kind = toProtoMessageKind(MessageKind::WakeWordEvt);
-  message.message_type = toProtoMessageType(MessageType::DATA);
+  message.kind = stackchan_websocket_v1_MessageKind_MESSAGE_KIND_WAKE_WORD_EVT;
+  message.message_type = stackchan_websocket_v1_MessageType_MESSAGE_TYPE_DATA;
   message.seq = g_uplink_seq++;
   message.which_body = stackchan_websocket_v1_WebSocketMessage_wake_word_evt_tag;
   message.body.wake_word_evt.detected = true;
@@ -111,8 +111,8 @@ void notifyCurrentState(StateMachine::State state)
 {
   auto &message = g_tx_message;
   message = stackchan_websocket_v1_WebSocketMessage_init_zero;
-  message.kind = toProtoMessageKind(MessageKind::StateEvt);
-  message.message_type = toProtoMessageType(MessageType::DATA);
+  message.kind = stackchan_websocket_v1_MessageKind_MESSAGE_KIND_STATE_EVT;
+  message.message_type = stackchan_websocket_v1_MessageType_MESSAGE_TYPE_DATA;
   message.seq = g_uplink_seq++;
   message.which_body = stackchan_websocket_v1_WebSocketMessage_state_evt_tag;
   message.body.state_evt.state = static_cast<stackchan_websocket_v1_StackchanState>(static_cast<uint8_t>(state));
@@ -126,8 +126,8 @@ void notifySpeakDone()
 {
   auto &message = g_tx_message;
   message = stackchan_websocket_v1_WebSocketMessage_init_zero;
-  message.kind = toProtoMessageKind(MessageKind::SpeakDoneEvt);
-  message.message_type = toProtoMessageType(MessageType::DATA);
+  message.kind = stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SPEAK_DONE_EVT;
+  message.message_type = stackchan_websocket_v1_MessageType_MESSAGE_TYPE_DATA;
   message.seq = g_uplink_seq++;
   message.which_body = stackchan_websocket_v1_WebSocketMessage_speak_done_evt_tag;
   message.body.speak_done_evt.done = true;
@@ -141,8 +141,8 @@ void notifyServoDone()
 {
   auto &message = g_tx_message;
   message = stackchan_websocket_v1_WebSocketMessage_init_zero;
-  message.kind = toProtoMessageKind(MessageKind::ServoDoneEvt);
-  message.message_type = toProtoMessageType(MessageType::DATA);
+  message.kind = stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVO_DONE_EVT;
+  message.message_type = stackchan_websocket_v1_MessageType_MESSAGE_TYPE_DATA;
   message.seq = g_uplink_seq++;
   message.which_body = stackchan_websocket_v1_WebSocketMessage_servo_done_evt_tag;
   message.body.servo_done_evt.done = true;
@@ -154,19 +154,18 @@ void notifyServoDone()
 
 bool applyRemoteStateCommand(const stackchan_websocket_v1_StateCommand &command)
 {
-  RemoteState target = fromProtoState(command.state);
-  switch (target)
+  switch (command.state)
   {
-  case RemoteState::Idle:
+  case stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_IDLE:
     stateMachine.setState(StateMachine::Idle);
     return true;
-  case RemoteState::Listening:
+  case stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_LISTENING:
     stateMachine.setState(StateMachine::Listening);
     return true;
-  case RemoteState::Thinking:
+  case stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_THINKING:
     stateMachine.setState(StateMachine::Thinking);
     return true;
-  case RemoteState::Speaking:
+  case stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_SPEAKING:
     stateMachine.setState(StateMachine::Speaking);
     return true;
   default:
@@ -190,7 +189,7 @@ bool applyServoCommand(const stackchan_websocket_v1_ServoCommandSequence &sequen
   for (pb_size_t i = 0; i < sequence.commands_count; ++i)
   {
     const auto &command = sequence.commands[i];
-    const ServoCommandOp op = fromProtoServoOperation(command.op);
+    const auto op = command.op;
 
     if (command.duration_ms < std::numeric_limits<int16_t>::min() ||
         command.duration_ms > std::numeric_limits<int16_t>::max())
@@ -200,7 +199,7 @@ bool applyServoCommand(const stackchan_websocket_v1_ServoCommandSequence &sequen
     }
 
     payload.push_back(static_cast<uint8_t>(op));
-    if (op == ServoCommandOp::Sleep)
+    if (op == stackchan_websocket_v1_ServoOperation_SERVO_OPERATION_SLEEP)
     {
       appendInt16Le(payload, static_cast<int16_t>(command.duration_ms));
       continue;
@@ -276,34 +275,24 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
     {
     case stackchan_websocket_v1_MessageKind_MESSAGE_KIND_AUDIO_WAV:
     {
-      WsHeader compat{};
-      compat.kind = static_cast<uint8_t>(MessageKind::AudioWav);
-      compat.messageType = static_cast<uint8_t>(rx.message_type);
-      compat.seq = rx.seq;
-
       if (rx.message_type == stackchan_websocket_v1_MessageType_MESSAGE_TYPE_START &&
           rx.which_body == stackchan_websocket_v1_WebSocketMessage_audio_wav_start_tag)
       {
-        uint8_t body[6]{};
-        uint32_t sample_rate = rx.body.audio_wav_start.sample_rate;
-        uint16_t channels = static_cast<uint16_t>(rx.body.audio_wav_start.channels);
-        memcpy(body, &sample_rate, sizeof(sample_rate));
-        memcpy(body + sizeof(sample_rate), &channels, sizeof(channels));
-        compat.payloadBytes = sizeof(body);
-        speaking.handleWavMessage(compat, body, sizeof(body));
+        speaking.handleWavStart(
+            rx.seq,
+            rx.body.audio_wav_start.sample_rate,
+            static_cast<uint16_t>(rx.body.audio_wav_start.channels));
       }
       else if (rx.message_type == stackchan_websocket_v1_MessageType_MESSAGE_TYPE_DATA &&
                rx.which_body == stackchan_websocket_v1_WebSocketMessage_audio_wav_data_tag)
       {
         size_t body_len = getProtoAudioChunkSize(rx.body.audio_wav_data);
-        compat.payloadBytes = body_len;
-        speaking.handleWavMessage(compat, getProtoAudioChunkBytes(rx.body.audio_wav_data), body_len);
+        speaking.handleWavData(rx.seq, getProtoAudioChunkBytes(rx.body.audio_wav_data), body_len);
       }
       else if (rx.message_type == stackchan_websocket_v1_MessageType_MESSAGE_TYPE_END &&
                rx.which_body == stackchan_websocket_v1_WebSocketMessage_audio_wav_end_tag)
       {
-        compat.payloadBytes = 0;
-        speaking.handleWavMessage(compat, nullptr, 0);
+        speaking.handleWavEnd(rx.seq);
       }
       else
       {

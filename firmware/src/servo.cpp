@@ -134,13 +134,13 @@ void BodyServo::loop()
   bool finished = false;
   switch (step.op)
   {
-  case ServoCommandOp::Sleep:
+  case stackchan_websocket_v1_ServoOperation_SERVO_OPERATION_SLEEP:
     finished = static_cast<int32_t>(now - sleep_deadline_ms_) >= 0;
     break;
-  case ServoCommandOp::MoveX:
+  case stackchan_websocket_v1_ServoOperation_SERVO_OPERATION_MOVE_X:
     finished = !axis_x_.moving;
     break;
-  case ServoCommandOp::MoveY:
+  case stackchan_websocket_v1_ServoOperation_SERVO_OPERATION_MOVE_Y:
     finished = !axis_y_.moving;
     break;
   default:
@@ -187,13 +187,13 @@ bool BodyServo::enqueueSequence(const uint8_t *payload, size_t payload_len)
       return false;
     }
 
-    const ServoCommandOp op = static_cast<ServoCommandOp>(payload[offset++]);
+    const auto op = static_cast<stackchan_websocket_v1_ServoOperation>(payload[offset++]);
     Step step{};
     step.op = op;
 
     switch (op)
     {
-    case ServoCommandOp::Sleep:
+    case stackchan_websocket_v1_ServoOperation_SERVO_OPERATION_SLEEP:
       if (offset + sizeof(int16_t) > payload_len)
       {
         log_w("ServoCmd sleep truncated at command=%u", static_cast<unsigned>(i));
@@ -202,8 +202,8 @@ bool BodyServo::enqueueSequence(const uint8_t *payload, size_t payload_len)
       step.duration_ms = readInt16Le(payload + offset);
       offset += sizeof(int16_t);
       break;
-    case ServoCommandOp::MoveX:
-    case ServoCommandOp::MoveY:
+    case stackchan_websocket_v1_ServoOperation_SERVO_OPERATION_MOVE_X:
+    case stackchan_websocket_v1_ServoOperation_SERVO_OPERATION_MOVE_Y:
       if (offset + sizeof(int8_t) + sizeof(int16_t) > payload_len)
       {
         log_w("ServoCmd move truncated at command=%u", static_cast<unsigned>(i));
@@ -380,13 +380,13 @@ void BodyServo::startCurrentStep(uint32_t now)
   step_started_ = true;
   switch (step.op)
   {
-  case ServoCommandOp::Sleep:
+  case stackchan_websocket_v1_ServoOperation_SERVO_OPERATION_SLEEP:
     sleep_deadline_ms_ = now + clampDuration(step.duration_ms);
     break;
-  case ServoCommandOp::MoveX:
+  case stackchan_websocket_v1_ServoOperation_SERVO_OPERATION_MOVE_X:
     startMove(axis_x_, step.angle, step.duration_ms);
     break;
-  case ServoCommandOp::MoveY:
+  case stackchan_websocket_v1_ServoOperation_SERVO_OPERATION_MOVE_Y:
     startMove(axis_y_, step.angle, step.duration_ms);
     break;
   default:

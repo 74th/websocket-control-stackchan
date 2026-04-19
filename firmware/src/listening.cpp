@@ -58,7 +58,7 @@ bool Listening::startStreaming()
   last_level_ = 0;
   silence_since_ms_ = 0;
   streaming_ = true;
-  return sendPacket(MessageType::START, nullptr, 0);
+  return sendPacket(stackchan_websocket_v1_MessageType_MESSAGE_TYPE_START, nullptr, 0);
 }
 
 bool Listening::stopStreaming()
@@ -79,7 +79,7 @@ bool Listening::stopStreaming()
     {
       size_t chunk = std::min({chunk_samples_, to_send, tail_capacity});
       size_t sent = ringPop(tail_buf.data(), chunk);
-      if (!sendPacket(MessageType::DATA, tail_buf.data(), sent))
+      if (!sendPacket(stackchan_websocket_v1_MessageType_MESSAGE_TYPE_DATA, tail_buf.data(), sent))
       {
         ok = false;
         break;
@@ -89,7 +89,7 @@ bool Listening::stopStreaming()
   }
 
   streaming_ = false;
-  ok = sendPacket(MessageType::END, nullptr, 0) && ok;
+  ok = sendPacket(stackchan_websocket_v1_MessageType_MESSAGE_TYPE_END, nullptr, 0) && ok;
   return ok;
 }
 
@@ -119,7 +119,7 @@ void Listening::loop()
     }
 
     size_t got = ringPop(send_buf.data(), chunk_samples_);
-    if (!sendPacket(MessageType::DATA, send_buf.data(), got))
+    if (!sendPacket(stackchan_websocket_v1_MessageType_MESSAGE_TYPE_DATA, send_buf.data(), got))
     {
       streaming_ = false;
       log_i("WS send failed (data)");
@@ -187,7 +187,7 @@ bool Listening::shouldStopForSilence() const
   return elapsed >= kSilenceDurationMs;
 }
 
-bool Listening::sendPacket(MessageType type, const int16_t *samples, size_t sampleCount)
+bool Listening::sendPacket(stackchan_websocket_v1_MessageType type, const int16_t *samples, size_t sampleCount)
 {
   if ((WiFi.status() != WL_CONNECTED) || !ws_.isConnected())
   {
@@ -196,16 +196,16 @@ bool Listening::sendPacket(MessageType type, const int16_t *samples, size_t samp
 
   auto &message = g_listening_tx_message;
   message = stackchan_websocket_v1_WebSocketMessage_init_zero;
-  message.kind = toProtoMessageKind(MessageKind::AudioPcm);
-  message.message_type = toProtoMessageType(type);
+  message.kind = stackchan_websocket_v1_MessageKind_MESSAGE_KIND_AUDIO_PCM;
+  message.message_type = type;
   message.seq = seq_counter_++;
 
   switch (type)
   {
-  case MessageType::START:
+  case stackchan_websocket_v1_MessageType_MESSAGE_TYPE_START:
     message.which_body = stackchan_websocket_v1_WebSocketMessage_audio_pcm_start_tag;
     break;
-  case MessageType::DATA:
+  case stackchan_websocket_v1_MessageType_MESSAGE_TYPE_DATA:
     message.which_body = stackchan_websocket_v1_WebSocketMessage_audio_pcm_data_tag;
     if (!setProtoAudioChunk(
             message.body.audio_pcm_data,
@@ -215,7 +215,7 @@ bool Listening::sendPacket(MessageType type, const int16_t *samples, size_t samp
       return false;
     }
     break;
-  case MessageType::END:
+  case stackchan_websocket_v1_MessageType_MESSAGE_TYPE_END:
     message.which_body = stackchan_websocket_v1_WebSocketMessage_audio_pcm_end_tag;
     break;
   default:

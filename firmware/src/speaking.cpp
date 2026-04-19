@@ -1,5 +1,4 @@
 #include "speaking.hpp"
-#include <cstring>
 #include <utility>
 
 void Speaking::reset()
@@ -37,91 +36,77 @@ void Speaking::end()
   reset();
 }
 
-void Speaking::handleWavMessage(const WsHeader &hdr, const uint8_t *body, size_t bodyLen)
+void Speaking::handleWavStart(uint32_t seq, uint32_t sampleRate, uint16_t channels)
 {
-  auto msgType = static_cast<MessageType>(hdr.messageType);
+  current_buffer_ = (current_buffer_ + 1) % 3;
+  std::vector<uint8_t> &buf = buffer_[current_buffer_];
+  buf.clear();
+  playing_ = false;
+  streaming_ = true;
+  next_seq_ = seq + 1;
+  state_.setState(StateMachine::Speaking);
 
-  if (msgType == MessageType::START)
+  if (sampleRate > 0)
   {
-    current_buffer_ = (current_buffer_ + 1) % 3;
-    std::vector<uint8_t> &buf = buffer_[current_buffer_];
-    buf.clear();
-    playing_ = false;
-    streaming_ = true;
-    next_seq_ = hdr.seq + 1;
-    state_.setState(StateMachine::Speaking);
+    sample_rate_ = sampleRate;
+  }
+  if (channels > 0)
+  {
+    channels_ = channels;
+  }
 
-    // START payload (optional): <uint32 sample_rate><uint16 channels>
-    if (body && bodyLen >= 6)
-    {
-      uint32_t sr = 0;
-      uint16_t ch = 1;
-      memcpy(&sr, body, sizeof(sr));
-      memcpy(&ch, body + sizeof(sr), sizeof(ch));
-      if (sr > 0)
-      {
-        sample_rate_ = sr;
-      }
-      if (ch > 0)
-      {
-        channels_ = ch;
-      }
-      log_i("TTS meta: sample_rate=%u channels=%u", (unsigned)sample_rate_, (unsigned)channels_);
-    }
-    else
-    {
-      log_w("TTS START without meta, fallback sr=%u ch=%u", (unsigned)sample_rate_, (unsigned)channels_);
-    }
-    log_i("TTS stream start seq=%u", (unsigned)hdr.seq);
+  log_i("TTS meta: sample_rate=%u channels=%u", (unsigned)sample_rate_, (unsigned)channels_);
+  log_i("TTS stream start seq=%u", (unsigned)seq);
+}
+
+void Speaking::handleWavData(uint32_t seq, const uint8_t *body, size_t bodyLen)
+{
+  if (!streaming_)
+  {
     return;
   }
 
-  if (msgType == MessageType::DATA)
+  std::vector<uint8_t> &buf = buffer_[current_buffer_];
+
+  if (seq != next_seq_)
   {
-    if (!streaming_)
-    {
-      return;
-    }
+    log_w("TTS seq gap: got=%u expected=%u", (unsigned)seq, (unsigned)next_seq_);
+    // TCP 前提で再送しない。検知だけして次を受ける。
+    next_seq_ = seq + 1;
+  }
+  else
+  {
+    next_seq_++;
+  }
 
-    std::vector<uint8_t> &buf = buffer_[current_buffer_];
+  buf.insert(buf.end(), body, body + bodyLen);
+  log_d("TTS chunk size=%u recv=%u", (unsigned)bodyLen, (unsigned)buf.size());
+}
 
-    if (hdr.seq != next_seq_)
-    {
-      log_w("TTS seq gap: got=%u expected=%u", (unsigned)hdr.seq, (unsigned)next_seq_);
-      // TCP 前提で再送しない。検知だけして次を受ける。
-      next_seq_ = hdr.seq + 1;
-    }
-    else
-    {
-      next_seq_++;
-    }
-
-    buf.insert(buf.end(), body, body + bodyLen);
-    log_d("TTS chunk size=%u recv=%u", (unsigned)bodyLen, (unsigned)buf.size());
+void Speaking::handleWavEnd(uint32_t seq)
+{
+  if (!streaming_)
+  {
     return;
   }
 
-  if (msgType == MessageType::END)
+  if (seq != next_seq_)
   {
-    if (!streaming_)
-    {
-      return;
-    }
+    log_w("TTS end seq gap: got=%u expected=%u", (unsigned)seq, (unsigned)next_seq_);
+  }
 
-    std::vector<uint8_t> &buf = buffer_[current_buffer_];
-    streaming_ = false;
-    next_seq_ = 0;
+  std::vector<uint8_t> &buf = buffer_[current_buffer_];
+  streaming_ = false;
+  next_seq_ = 0;
 
-    if (!buf.empty())
-    {
-      playing_ = true;
+  if (!buf.empty())
+  {
+    playing_ = true;
 
-      const int16_t *samples = reinterpret_cast<const int16_t *>(buf.data());
-      size_t sample_len = buf.size() / sizeof(int16_t);
-      bool stereo = channels_ > 1;
-      M5.Speaker.playRaw(samples, sample_len, sample_rate_, stereo, 1, 0);
-    }
-    return;
+    const int16_t *samples = reinterpret_cast<const int16_t *>(buf.data());
+    size_t sample_len = buf.size() / sizeof(int16_t);
+    bool stereo = channels_ > 1;
+    M5.Speaker.playRaw(samples, sample_len, sample_rate_, stereo, 1, 0);
   }
 }
 
