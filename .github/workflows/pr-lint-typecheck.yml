@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - develop
     paths:
       - ".github/workflows/pr-lint-typecheck.yml"
       - "Makefile"
