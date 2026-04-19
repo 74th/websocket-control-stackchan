@@ -9,6 +9,7 @@
 #include <limits>
 #include <vector>
 #include "config.h"
+#include "../include/metadata.hpp"
 #include "../include/protocols.hpp"
 #include "../include/state_machine.hpp"
 #include "../include/speaking.hpp"
@@ -104,6 +105,16 @@ void notifyWakeWordDetected()
   if (!sendUplinkMessage(message))
   {
     log_w("Failed to send WakeWordEvt");
+  }
+}
+
+void notifyFirmwareMetadata()
+{
+  auto &message = g_tx_message;
+  setFirmwareMetadataMessage(message, g_uplink_seq++);
+  if (!sendUplinkMessage(message))
+  {
+    log_w("Failed to send FirmwareMetadata");
   }
 }
 
@@ -242,6 +253,7 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
   case WStype_DISCONNECTED:
     // M5.Display.println("WS: disconnected");
     log_i("WS disconnected");
+    resetServerMetadata();
     stateMachine.setState(StateMachine::Disconnected);
     break;
   case WStype_CONNECTED:
@@ -252,6 +264,7 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
       stateMachine.setState(StateMachine::Idle);
     }
     markCommunicationActive();
+    notifyFirmwareMetadata();
     notifyCurrentState(stateMachine.getState());
     break;
   case WStype_TEXT:
@@ -322,6 +335,17 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
         log_w("ServoCmd protobuf body mismatch type=%u body=%u", (unsigned)rx.message_type, (unsigned)rx.which_body);
       }
       break;
+    case stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVER_METADATA:
+      if (rx.message_type == stackchan_websocket_v1_MessageType_MESSAGE_TYPE_DATA &&
+          rx.which_body == stackchan_websocket_v1_WebSocketMessage_server_metadata_tag)
+      {
+        applyServerMetadata(rx.body.server_metadata);
+      }
+      else
+      {
+        log_w("ServerMetadata protobuf body mismatch type=%u body=%u", (unsigned)rx.message_type, (unsigned)rx.which_body);
+      }
+      break;
     default:
       // M5.Display.printf("WS bin kind=%u len=%d\n", (unsigned)rx.kind, (int)length);
       break;
@@ -365,6 +389,7 @@ void setup()
     notifyWakeWordDetected();
   });
   display.init();
+  initializeFirmwareMetadata();
 
   connectWiFi();
 

@@ -102,6 +102,22 @@ def encode_state_command_message(seq: int, state_id: int) -> bytes:
     return message.SerializeToString()
 
 
+def encode_server_metadata_message(
+    seq: int,
+    *,
+    has_server_wake_word: bool,
+    server_version: str,
+) -> bytes:
+    message = _new_message(
+        ws_pb2.MESSAGE_KIND_SERVER_METADATA,
+        ws_pb2.MESSAGE_TYPE_DATA,
+        seq,
+    )
+    message.server_metadata.has_server_wake_word = bool(has_server_wake_word)
+    message.server_metadata.server_version = server_version
+    return message.SerializeToString()
+
+
 def encode_servo_command_message(seq: int, commands: Sequence[ServoCommand]) -> bytes:
     normalized = list(commands)
     _ensure_range(len(normalized), minimum=0, maximum=255, label="servo command count")
@@ -163,6 +179,7 @@ __all__ = [
     "encode_audio_wav_data_message",
     "encode_audio_wav_end_message",
     "encode_audio_wav_start_message",
+    "encode_server_metadata_message",
     "encode_servo_command_message",
     "encode_state_command_message",
     "parse_websocket_message",

@@ -45,6 +45,16 @@ PB_BIND(stackchan_websocket_v1_ServoCommand, stackchan_websocket_v1_ServoCommand
 PB_BIND(stackchan_websocket_v1_ServoDoneEvent, stackchan_websocket_v1_ServoDoneEvent, AUTO)
 
 
+PB_BIND(stackchan_websocket_v1_FirmwareMetadata, stackchan_websocket_v1_FirmwareMetadata, AUTO)
+
+
+PB_BIND(stackchan_websocket_v1_ServerMetadata, stackchan_websocket_v1_ServerMetadata, AUTO)
+
+
+
+
+
+
 
 
 
