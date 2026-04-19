@@ -1,0 +1,2 @@
+stackchan.websocket.v1.AudioChunk.pcm_bytes max_size:4096
+stackchan.websocket.v1.ServoCommandSequence.commands max_count:255

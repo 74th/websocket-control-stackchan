@@ -1,15 +1,14 @@
 // Protocol definitions shared between CoreS3 firmware and other components
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <vector>
 
-// WebSocket binary protocol (audio + future kinds)
-// Header layout (little-endian, packed):
-//  - kind: uint8_t   (message kind)
-//  - messageType: uint8_t  (START/DATA/END)
-//  - reserved: uint8_t (0, future flags)
-//  - seq: uint16 (sequence number)
-//  - payloadBytes: uint16 (bytes following the header)
+#include "../lib/generated_protobuf/websocket-message.pb.h"
+
+// Internal compatibility metadata for message routing after protobuf decode.
+// This is no longer sent on the wire directly.
 
 enum class MessageKind : uint8_t
 {
@@ -35,8 +34,8 @@ struct __attribute__((packed)) WsHeader
 	uint8_t kind;        // MessageKind
 	uint8_t messageType; // MessageType
 	uint8_t reserved;    // 0 (flags/reserved)
-	uint16_t seq;        // sequence number
-	uint16_t payloadBytes; // bytes following the header
+	uint32_t seq;        // sequence number
+	uint32_t payloadBytes; // bytes following the header
 };
 
 // payload for kind=StateCmd, messageType=DATA
@@ -59,3 +58,30 @@ enum class ServoCommandOp : uint8_t
 	MoveX = 1,
 	MoveY = 2,
 };
+
+constexpr size_t kProtoAudioChunkMaxBytes = 4096;
+constexpr size_t kProtoServoCommandMaxCount = 255;
+constexpr size_t kMaxEncodedWebSocketMessageBytes = stackchan_websocket_v1_WebSocketMessage_size;
+
+stackchan_websocket_v1_MessageKind toProtoMessageKind(MessageKind kind);
+stackchan_websocket_v1_MessageType toProtoMessageType(MessageType type);
+stackchan_websocket_v1_StackchanState toProtoState(RemoteState state);
+stackchan_websocket_v1_ServoOperation toProtoServoOperation(ServoCommandOp op);
+
+RemoteState fromProtoState(stackchan_websocket_v1_StackchanState state);
+ServoCommandOp fromProtoServoOperation(stackchan_websocket_v1_ServoOperation op);
+
+bool setProtoAudioChunk(
+	stackchan_websocket_v1_AudioChunk &chunk,
+	const uint8_t *data,
+	size_t data_len);
+const uint8_t *getProtoAudioChunkBytes(const stackchan_websocket_v1_AudioChunk &chunk);
+size_t getProtoAudioChunkSize(const stackchan_websocket_v1_AudioChunk &chunk);
+
+bool encodeWebSocketMessage(
+	const stackchan_websocket_v1_WebSocketMessage &message,
+	std::vector<uint8_t> &encoded);
+bool decodeWebSocketMessage(
+	const uint8_t *data,
+	size_t data_len,
+	stackchan_websocket_v1_WebSocketMessage &message);

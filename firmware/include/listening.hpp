@@ -53,7 +53,7 @@ private:
   size_t ring_read_ = 0;
   size_t ring_available_ = 0;
 
-  uint16_t seq_counter_ = 0;
+  uint32_t seq_counter_ = 0;
   bool streaming_ = false;
   bool events_registered_ = false;
 

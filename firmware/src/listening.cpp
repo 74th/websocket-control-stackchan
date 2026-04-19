@@ -4,6 +4,11 @@
 #include <vector>
 #include <cstdlib>
 
+namespace
+{
+stackchan_websocket_v1_WebSocketMessage g_listening_tx_message = stackchan_websocket_v1_WebSocketMessage_init_zero;
+}
+
 Listening::Listening(WebSocketsClient &ws, StateMachine &sm, int sampleRate)
     : ws_(ws), state_(sm), sample_rate_(sampleRate),
       chunk_samples_(static_cast<size_t>(sampleRate) / 8),
@@ -189,19 +194,38 @@ bool Listening::sendPacket(MessageType type, const int16_t *samples, size_t samp
     return false;
   }
 
-  WsHeader header{};
-  header.kind = static_cast<uint8_t>(MessageKind::AudioPcm);
-  header.messageType = static_cast<uint8_t>(type);
-  header.reserved = 0;
-  header.seq = seq_counter_++;
-  header.payloadBytes = static_cast<uint16_t>(sampleCount * sizeof(int16_t));
+  auto &message = g_listening_tx_message;
+  message = stackchan_websocket_v1_WebSocketMessage_init_zero;
+  message.kind = toProtoMessageKind(MessageKind::AudioPcm);
+  message.message_type = toProtoMessageType(type);
+  message.seq = seq_counter_++;
+
+  switch (type)
+  {
+  case MessageType::START:
+    message.which_body = stackchan_websocket_v1_WebSocketMessage_audio_pcm_start_tag;
+    break;
+  case MessageType::DATA:
+    message.which_body = stackchan_websocket_v1_WebSocketMessage_audio_pcm_data_tag;
+    if (!setProtoAudioChunk(
+            message.body.audio_pcm_data,
+            reinterpret_cast<const uint8_t *>(samples),
+            sampleCount * sizeof(int16_t)))
+    {
+      return false;
+    }
+    break;
+  case MessageType::END:
+    message.which_body = stackchan_websocket_v1_WebSocketMessage_audio_pcm_end_tag;
+    break;
+  default:
+    return false;
+  }
 
   std::vector<uint8_t> packet;
-  packet.resize(sizeof(WsHeader) + header.payloadBytes);
-  memcpy(packet.data(), &header, sizeof(WsHeader));
-  if (header.payloadBytes > 0 && samples != nullptr)
+  if (!encodeWebSocketMessage(message, packet))
   {
-    memcpy(packet.data() + sizeof(WsHeader), samples, header.payloadBytes);
+    return false;
   }
 
   ws_.sendBIN(packet.data(), packet.size());

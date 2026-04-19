@@ -16,10 +16,12 @@ dependencies = [
     "voicevox-client>=1.1.0",
     "python-dotenv>=1.2.1",
     "pydantic-settings>=2.13.1",
+    "protobuf>=6.33.3",
 ]
 
 [dependency-groups]
 dev = [
+    "grpcio-tools>=1.76.0",
     "ruff>=0.15.2",
     "ty>=0.0.17",
 ]

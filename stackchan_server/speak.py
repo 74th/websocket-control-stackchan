@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import io
-import struct
 import wave
 from datetime import UTC, datetime
 from logging import getLogger
@@ -12,6 +11,11 @@ from typing import Awaitable, Callable
 from fastapi import WebSocket, WebSocketDisconnect
 
 from .listen import TimeoutError
+from .protobuf_ws import (
+    encode_audio_wav_data_message,
+    encode_audio_wav_end_message,
+    encode_audio_wav_start_message,
+)
 from .types import AudioFormat, SpeechSynthesizer, StreamingSpeechSynthesizer
 
 logger = getLogger(__name__)
@@ -22,11 +26,11 @@ class SpeakHandler:
         self,
         *,
         websocket: WebSocket,
-        ws_header_fmt: str,
-        wav_kind: int,
-        start_msg_type: int,
-        data_msg_type: int,
-        end_msg_type: int,
+        ws_header_fmt: str | None = None,
+        wav_kind: int | None = None,
+        start_msg_type: int | None = None,
+        data_msg_type: int | None = None,
+        end_msg_type: int | None = None,
         down_wav_chunk: int,
         down_segment_millis: int,
         down_segment_stagger_millis: int,
@@ -36,11 +40,6 @@ class SpeakHandler:
         debug_recording: bool,
     ) -> None:
         self.ws = websocket
-        self.ws_header_fmt = ws_header_fmt
-        self.wav_kind = wav_kind
-        self.start_msg_type = start_msg_type
-        self.data_msg_type = data_msg_type
-        self.end_msg_type = end_msg_type
         self.down_wav_chunk = down_wav_chunk
         self.down_segment_millis = down_segment_millis
         self.down_segment_stagger_millis = down_segment_stagger_millis
@@ -309,40 +308,21 @@ class SpeakHandler:
         next_seq: Callable[[], int],
     ) -> None:
         logger.info("Sending segment bytes=%d", len(segment_pcm))
-        start_payload = struct.pack("<IH", tts_sample_rate, tts_channels)
-        start_hdr = struct.pack(
-            self.ws_header_fmt,
-            self.wav_kind,
-            self.start_msg_type,
-            0,
-            next_seq(),
-            len(start_payload),
+        await self.ws.send_bytes(
+            encode_audio_wav_start_message(
+                next_seq(),
+                sample_rate=tts_sample_rate,
+                channels=tts_channels,
+            )
         )
-        await self.ws.send_bytes(start_hdr + start_payload)
 
         seg_offset = 0
         seg_total = len(segment_pcm)
         while seg_offset < seg_total:
             chunk = segment_pcm[seg_offset : seg_offset + self.down_wav_chunk]
-            data_hdr = struct.pack(
-                self.ws_header_fmt,
-                self.wav_kind,
-                self.data_msg_type,
-                0,
-                next_seq(),
-                len(chunk),
-            )
-            await self.ws.send_bytes(data_hdr + chunk)
+            await self.ws.send_bytes(encode_audio_wav_data_message(next_seq(), chunk))
             seg_offset += len(chunk)
 
-        end_hdr = struct.pack(
-            self.ws_header_fmt,
-            self.wav_kind,
-            self.end_msg_type,
-            0,
-            next_seq(),
-            0,
-        )
-        await self.ws.send_bytes(end_hdr)
+        await self.ws.send_bytes(encode_audio_wav_end_message(next_seq()))
 
 __all__ = ["SpeakHandler"]
