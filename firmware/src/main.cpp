@@ -48,7 +48,9 @@ namespace
 {
 uint32_t g_uplink_seq = 0;
 uint32_t g_last_comm_ms = 0;
+uint32_t g_last_local_wake_word_ms = 0;
 constexpr uint32_t kCommTimeoutMs = 60000;
+constexpr uint32_t kLocalWakeWordCooldownMs = 750;
 stackchan_websocket_v1_WebSocketMessage g_tx_message = stackchan_websocket_v1_WebSocketMessage_init_zero;
 stackchan_websocket_v1_WebSocketMessage g_rx_message = stackchan_websocket_v1_WebSocketMessage_init_zero;
 
@@ -112,6 +114,67 @@ void notifyWakeWordDetected()
   if (!sendUplinkMessage(message))
   {
     log_w("Failed to send WakeWordEvt");
+  }
+}
+
+bool canTriggerLocalWakeWord()
+{
+  if (!shouldUseDeviceWakeWord())
+  {
+    return false;
+  }
+
+  if (stateMachine.getState() != StateMachine::Idle)
+  {
+    return false;
+  }
+
+  if ((WiFi.status() != WL_CONNECTED) || !wsClient.isConnected())
+  {
+    return false;
+  }
+
+  uint32_t now = millis();
+  if (g_last_local_wake_word_ms != 0 &&
+      now - g_last_local_wake_word_ms < kLocalWakeWordCooldownMs)
+  {
+    return false;
+  }
+
+  return true;
+}
+
+void triggerLocalWakeWord(const char *source)
+{
+  if (!canTriggerLocalWakeWord())
+  {
+    return;
+  }
+
+  g_last_local_wake_word_ms = millis();
+  log_i("Local wake-word trigger from %s", source);
+  notifyWakeWordDetected();
+}
+
+void handleTouchWakeWordInput()
+{
+#if USE_STACKCHAN_BSP
+  if (M5StackChan.TouchSensor.wasClicked())
+  {
+    triggerLocalWakeWord("top touch sensor");
+    return;
+  }
+#endif
+
+  if (!M5.Touch.isEnabled() || M5.Touch.getCount() == 0)
+  {
+    return;
+  }
+
+  const auto &touch = M5.Touch.getDetail(0);
+  if (touch.wasClicked())
+  {
+    triggerLocalWakeWord("screen touch");
   }
 }
 
@@ -478,6 +541,7 @@ void loop()
   switch (current)
   {
   case StateMachine::Idle:
+    handleTouchWakeWordInput();
     if (shouldUseDeviceWakeWord())
     {
       wakeUpWord.loop();

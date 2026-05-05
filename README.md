@@ -16,7 +16,8 @@ StackChanをフロントにし、メインのロジック処理をPC上のPython
 
 サンプルアプリケーション [example_apps/](./example_apps/)
 
-以下の関数で、wake word を起点に対話セッションを実装できます。
+以下の関数で、wake word（Hi, StackChan!） を起点に対話セッションを実装できます。
+また、画面および、公式スタックチャン頭部のタッチセンサーでも対話セッションを開始できます。
 
 ```py
 @app.talk_session
@@ -99,6 +100,7 @@ async def talk_session(proxy: WsProxy):
 - コア:
     - M5Stack CoreS3 SE
     - M5Stack Atom S3R + Atomic Echo Base
+    - M5Stack公式StackChan
     <!-- - M5Stack Atom EchoS3R -->
 - サーボ（なくても動作します）:
     - Tower Pro SG90
