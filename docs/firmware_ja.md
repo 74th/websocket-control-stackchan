@@ -99,8 +99,8 @@ CoreS3のPortCの場合
 #define USE_SERVO_SCS0009 1
 
 // Pin definitions
-#define SCS_SRIAL_RX_PIN 17
-#define SCS_SRIAL_TX_PIN 18
+#define SCS_SERIAL_RX_PIN 17
+#define SCS_SERIAL_TX_PIN 18
 
 // Servo ID
 #define SCS0009_X_ID 1
