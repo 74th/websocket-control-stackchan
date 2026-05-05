@@ -35,7 +35,9 @@ bool detectHasLed()
 
 stackchan_websocket_v1_ServoType detectServoType()
 {
-#if defined(USE_SERVO_SG90)
+#if USE_STACKCHAN_BSP
+  return stackchan_websocket_v1_ServoType_SERVO_TYPE_SCS0009;
+#elif defined(USE_SERVO_SG90)
   return stackchan_websocket_v1_ServoType_SERVO_TYPE_SG90;
 #elif defined(USE_SERVO_SCS0009)
   return stackchan_websocket_v1_ServoType_SERVO_TYPE_SCS0009;

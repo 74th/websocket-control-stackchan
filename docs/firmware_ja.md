@@ -9,9 +9,10 @@
 
 スタータスバー中の"env:m5stack-xxxx"もしくは"env:Default"と書かれている部分をクリックして、選択します。
 
-- env:m5stack-cores3-m5unified: M5Stack CoreS3
-- env:m5stack-atoms3r-m5unified: M5Atom S3RとAtomic Echo Base
-- env:m5stack-atoms3r-m5unified: M5Atom EchoS3R
+- env:m5stack-cores3-m5unified: M5Stack CoreS3(SKU:K128, K128-Lite, K128-SE)
+- env:m5stack-atoms3r-m5unified: M5Atom S3R(SKU:C126)とAtomic Echo Base(SKU:A149)
+- env:m5stack-atoms3r-m5unified: M5Atom EchoS3R(SKU:C126-ECHO)
+- env:m5stack-official-stackchan: M5Stack公式StackChan(SKU:K151)
 
 ## WiFi設定
 
@@ -47,6 +48,18 @@ WebSocketのパスは変更不要です。
 サーボモータに合わせて、コメントアウトされている設定の有効化と、ピンの設定を記述してください。
 ボディがない構成では、`USE_SERVO_SG90` と `USE_SERVO_SCS0009` のどちらも有効化しないでください。
 その場合、ファームウェアはサーボの初期化を行わず、`ServoCmd` を受信しても動作はせずに完了扱いで受け付けます。
+
+### M5Stack公式StackChanの場合
+
+env:m5stack-official-stackchan を選択した場合、SCS0009が有効になります。
+
+SCS0009が使用されており、中心座標がずれている場合があります。
+以下を標準値としていますが、必要に応じてオフセット値を調整してください。
+
+```h
+#define SCS0009_X_CENTER_OFFSET 0
+#define SCS0009_Y_CENTER_OFFSET -35
+```
 
 ### SG90の場合
 
@@ -99,8 +112,8 @@ CoreS3のPortCの場合
 #define USE_SERVO_SCS0009 1
 
 // Pin definitions
-#define SCS_SRIAL_RX_PIN 17
-#define SCS_SRIAL_TX_PIN 18
+#define SCS0009_RX_PIN 17
+#define SCS0009_TX_PIN 18
 
 // Servo ID
 #define SCS0009_X_ID 1
