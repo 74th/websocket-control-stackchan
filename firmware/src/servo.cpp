@@ -296,9 +296,9 @@ bool BodyServo::ensureAttached()
   axis_y_.center_offset_degree = kServoYCenterOffset;
 
 #if USE_STACKCHAN_BSP
-  attached_ = sc_.begin(UART_NUM_1, kScsBaudRate, SCS_SERIAL_TX_PIN, SCS_SERIAL_RX_PIN);
+  attached_ = sc_.begin(UART_NUM_1, kScsBaudRate, SCS0009_TX_PIN, SCS0009_RX_PIN);
 #else
-  Serial1.begin(kScsBaudRate, SERIAL_8N1, SCS_SERIAL_RX_PIN, SCS_SERIAL_TX_PIN);
+  Serial1.begin(kScsBaudRate, SERIAL_8N1, SCS0009_RX_PIN, SCS0009_TX_PIN);
   sc_.pSerial = &Serial1;
   attached_ = true;
 #endif
