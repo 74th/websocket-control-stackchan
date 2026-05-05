@@ -11,6 +11,8 @@
 
 #if USE_STACKCHAN_BSP
 // -- using M5Stack Official StackChan
+// #define SCS0009_X_CENTER_OFFSET 0
+// #define SCS0009_Y_CENTER_OFFSET -35
 #else
 
 // -- using SG90 --
