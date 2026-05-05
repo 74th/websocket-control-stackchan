@@ -20,17 +20,17 @@ from ..types import SpeechRecognizer
 logger = getLogger(__name__)
 
 _DEFAULT_SILENCE_RMS_THRESHOLD = 75.0
-_DEFAULT_SERVER_PORT = 8080
+_DEFAULT_SERVER_URL = "http://127.0.0.1:8080/inference"
 
 
 class WhisperServerSpeechToTextConfig(BaseSettings):
-    url: str | None = None
-    port: int = _DEFAULT_SERVER_PORT
+    url: str = _DEFAULT_SERVER_URL
     language: str = "auto"
     detect_language: bool = False
     response_format: str = "verbose_json"
     silence_rms_threshold: float = _DEFAULT_SILENCE_RMS_THRESHOLD
     request_timeout_seconds: float = 60.0
+    model: str = ""
 
     class Config:
         env_prefix = "STACKCHAN_WHISPER_SERVER_"
@@ -43,10 +43,7 @@ class WhisperServerSpeechToText(SpeechRecognizer):
         config: WhisperServerSpeechToTextConfig | None = None,
     ) -> None:
         self._conf = config or WhisperServerSpeechToTextConfig()
-        self._server_url = _default_server_url(
-            url=self._conf.url,
-            port=self._conf.port,
-        )
+        self._server_url = self._conf.url
 
     async def transcribe(self, pcm_bytes: bytes) -> str:
         rms_level = _pcm_rms_level(pcm_bytes)
@@ -78,6 +75,10 @@ class WhisperServerSpeechToText(SpeechRecognizer):
             "response_format": self._conf.response_format,
             "language": language,
         }
+
+        if self._conf.model:
+            fields["model"] = self._conf.model
+
         if self._conf.detect_language:
             fields["detect_language"] = "true"
 
@@ -115,14 +116,6 @@ class WhisperServerSpeechToText(SpeechRecognizer):
 
         payload = _load_json_response_bytes(response_body)
         return _load_transcript_from_verbose_json(payload)
-
-
-def _default_server_url(*, url: str | None, port: int) -> str:
-    if url:
-        return url.rstrip("/")
-    return f"http://127.0.0.1:{port}/inference"
-
-
 def _load_json_response_bytes(response_body: bytes) -> object:
     response_text = response_body.decode("utf-8", errors="replace")
     if "\ufffd" in response_text:

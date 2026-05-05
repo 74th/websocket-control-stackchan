@@ -59,13 +59,31 @@ STACKCHAN_WHISPER_CLI_MODEL_PATH="/path/to/whisper.cpp/ggml-small.bin"
 STACKCHAN_WHISPER_CLI_VAD_MODEL_PATH="/path/to/whisper.cpp/ggml-silero-v5.1.2.bin"
 ```
 
-### (オプション)Whisper.cppのwhisper-serverの設定
+### (オプション) Whisper Serverの設定
 
 (WIP)
 
+`STACKCHAN_WHISPER_SERVER_URL` に Whisper Server の推論エンドポイント URL をそのまま指定します。
+未設定時は `http://127.0.0.1:8080/inference` を利用します。
+
+#### 例: Whisper.cppのwhisper-serverの設定
+
+whisper.cpp/examples/server: https://github.com/ggml-org/whisper.cpp/tree/master/examples/server
+
 ```
-STACKCHAN_USE_USE_WHISPER_SERVER=1
-STACKCHAN_WHISPER_SERVER_PORT=8431
+STACKCHAN_USE_WHISPER_SERVER=1
+STACKCHAN_WHISPER_SERVER_URL="http://127.0.0.1:8080/inference"
+STACKCHAN_WHISPER_SERVER_MODEL=
+```
+
+#### 例: [Lemonade](https://lemonade-server.ai/) を使う場合
+
+Lemonade: https://lemonade-server.ai/
+
+```
+STACKCHAN_USE_WHISPER_SERVER=1
+STACKCHAN_WHISPER_SERVER_URL=http://localhost:13305/api/v1/audio/transcriptions
+STACKCHAN_WHISPER_SERVER_MODEL=Whisper-Large-v3-Turbo
 ```
 
 ## 音声合成の設定
