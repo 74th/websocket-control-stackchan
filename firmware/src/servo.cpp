@@ -97,8 +97,10 @@ void BodyServo::init()
   axis_x_.servo.write(applyCenterOffset(axis_x_.current_degree, axis_x_.center_offset_degree));
   axis_y_.servo.write(applyCenterOffset(axis_y_.current_degree, axis_y_.center_offset_degree));
 #elif defined(USE_SERVO_SCS0009)
+#if !USE_STACKCHAN_BSP
   sc_.PWMMode(axis_x_.scs_id, false);
   sc_.PWMMode(axis_y_.scs_id, false);
+#endif
   sc_.WritePos(axis_x_.scs_id, degreeToScsPosition(applyCenterOffset(axis_x_.current_degree, axis_x_.center_offset_degree), axis_x_.reverse_direction), 0, kScsDefaultSpeed);
   sc_.WritePos(axis_y_.scs_id, degreeToScsPosition(applyCenterOffset(axis_y_.current_degree, axis_y_.center_offset_degree), axis_y_.reverse_direction), 0, kScsDefaultSpeed);
 #endif
@@ -293,9 +295,13 @@ bool BodyServo::ensureAttached()
   axis_y_.reverse_direction = kServoYReverseDirection;
   axis_y_.center_offset_degree = kServoYCenterOffset;
 
+#if USE_STACKCHAN_BSP
+  attached_ = sc_.begin(UART_NUM_1, kScsBaudRate, SCS_SERIAL_TX_PIN, SCS_SERIAL_RX_PIN);
+#else
   Serial1.begin(kScsBaudRate, SERIAL_8N1, SCS_SERIAL_RX_PIN, SCS_SERIAL_TX_PIN);
   sc_.pSerial = &Serial1;
   attached_ = true;
+#endif
 #endif
 
   return attached_;
@@ -355,7 +361,7 @@ void BodyServo::startMove(AxisMotion &axis, int8_t degree, int16_t duration_ms)
 #if defined(USE_SERVO_SG90)
     axis.servo.write(applyCenterOffset(axis.current_degree, axis.center_offset_degree));
 #elif defined(USE_SERVO_SCS0009)
-  sc_.WritePos(axis.scs_id, degreeToScsPosition(applyCenterOffset(axis.current_degree, axis.center_offset_degree), axis.reverse_direction), 0, kScsDefaultSpeed);
+    sc_.WritePos(axis.scs_id, degreeToScsPosition(applyCenterOffset(axis.current_degree, axis.center_offset_degree), axis.reverse_direction), 0, kScsDefaultSpeed);
 #endif
     axis.moving = false;
     return;

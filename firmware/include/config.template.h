@@ -9,6 +9,10 @@
 
 // Leave both servo options commented out if you are using a StackChan without a body.
 
+#if USE_STACKCHAN_BSP
+// -- using M5Stack Official StackChan
+#else
+
 // -- using SG90 --
 #define USE_SERVO_SG90 1
 
@@ -39,3 +43,5 @@
 // Positive values bias X to the right and Y upward; negative values bias X to the left and Y downward
 // #define SCS0009_X_CENTER_OFFSET 0
 // #define SCS0009_Y_CENTER_OFFSET 0
+
+#endif

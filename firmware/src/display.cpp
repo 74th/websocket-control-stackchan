@@ -2,11 +2,18 @@
 
 #include "display.hpp"
 
+#if USE_STACKCHAN_BSP
+#define GFXModule M5StackChan.Display()
+#else
+#define GFXModule M5.Display
+#endif
+
+
 Display::Display(StateMachine &stateMachine) : state_(stateMachine) {}
 
 void Display::init()
 {
-  M5.Display.fillScreen(TFT_BLACK);
+  GFXModule.fillScreen(TFT_BLACK);
   drawForState(state_.getState());
   drawFace();
   has_prev_state_ = true;
@@ -18,7 +25,7 @@ void Display::loop()
   StateMachine::State current = state_.getState();
   if (!has_prev_state_ || current != prev_state_)
   {
-    M5.Display.fillScreen(TFT_BLACK);
+    GFXModule.fillScreen(TFT_BLACK);
     drawForState(current);
     drawFace();
   }
@@ -29,8 +36,8 @@ void Display::loop()
 
 void Display::drawForState(StateMachine::State state)
 {
-  int32_t width = M5.Display.width();
-  int32_t height = M5.Display.height();
+  int32_t width = GFXModule.width();
+  int32_t height = GFXModule.height();
   int32_t bar_height = statusBarHeight();
   int32_t bar_y = std::max<int32_t>(0, height - bar_height);
 
@@ -65,18 +72,18 @@ void Display::drawForState(StateMachine::State state)
     break;
   }
 
-  M5.Display.fillRect(0, bar_y, width, bar_height, bg_color);
-  M5.Display.setFont(&fonts::Font2);
-  M5.Display.setTextSize(1);
-  M5.Display.setTextColor(font_color, bg_color);
-  M5.Display.setCursor(isAtomS3R() ? 4 : 10, bar_y + (isAtomS3R() ? 6 : 2));
-  M5.Display.printf("%s", stateToString(state));
+  GFXModule.fillRect(0, bar_y, width, bar_height, bg_color);
+  GFXModule.setFont(&fonts::Font2);
+  GFXModule.setTextSize(1);
+  GFXModule.setTextColor(font_color, bg_color);
+  GFXModule.setCursor(isAtomS3R() ? 4 : 10, bar_y + (isAtomS3R() ? 6 : 2));
+  GFXModule.printf("%s", stateToString(state));
 }
 
 void Display::drawFace()
 {
-  int32_t width = M5.Display.width();
-  int32_t height = M5.Display.height() - statusBarHeight();
+  int32_t width = GFXModule.width();
+  int32_t height = GFXModule.height() - statusBarHeight();
   int32_t center_x = width / 2;
 
   int32_t eye_y = height * (isAtomS3R() ? 42 : 46) / 100;
@@ -87,9 +94,9 @@ void Display::drawFace()
   int32_t mouth_width = width * (isAtomS3R() ? 32 : 27) / 100;
   int32_t mouth_height = std::max<int32_t>(3, height / (isAtomS3R() ? 36 : 48));
 
-  M5.Display.fillCircle(center_x - eye_offset_x, eye_y, eye_radius, TFT_WHITE);
-  M5.Display.fillCircle(center_x + eye_offset_x, eye_y, eye_radius, TFT_WHITE);
-  M5.Display.fillRect(center_x - mouth_width / 2, mouth_y, mouth_width, mouth_height, TFT_WHITE);
+  GFXModule.fillCircle(center_x - eye_offset_x, eye_y, eye_radius, TFT_WHITE);
+  GFXModule.fillCircle(center_x + eye_offset_x, eye_y, eye_radius, TFT_WHITE);
+  GFXModule.fillRect(center_x - mouth_width / 2, mouth_y, mouth_width, mouth_height, TFT_WHITE);
 }
 
 bool Display::isAtomS3R() const

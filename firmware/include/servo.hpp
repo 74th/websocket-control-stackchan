@@ -8,12 +8,40 @@
 #include "config.h"
 #include "protocols.hpp"
 
+#if USE_STACKCHAN_BSP
+#ifndef USE_SERVO_SCS0009
+#define USE_SERVO_SCS0009 1
+#endif
+#ifndef SCS_SERIAL_RX_PIN
+#define SCS_SERIAL_RX_PIN 7
+#endif
+#ifndef SCS_SERIAL_TX_PIN
+#define SCS_SERIAL_TX_PIN 6
+#endif
+#ifndef SCS0009_X_ID
+#define SCS0009_X_ID 1
+#endif
+#ifndef SCS0009_Y_ID
+#define SCS0009_Y_ID 2
+#endif
+#ifndef SCS0009_X_CENTER_OFFSET
+#define SCS0009_X_CENTER_OFFSET 0
+#endif
+#ifndef SCS0009_Y_CENTER_OFFSET
+#define SCS0009_Y_CENTER_OFFSET -35
+#endif
+#endif
+
 #if defined(USE_SERVO_SG90)
 #include <ESP32Servo.h>
 #endif
 
 #if defined(USE_SERVO_SCS0009)
+#if USE_STACKCHAN_BSP
+#include <drivers/SCServo_lib/src/SCSCL.h>
+#else
 #include <SCServo.h>
+#endif
 #endif
 
 class BodyServo

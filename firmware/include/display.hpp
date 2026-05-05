@@ -1,6 +1,10 @@
 #pragma once
 
+#if USE_STACKCHAN_BSP
+#include <M5StackChan.h>
+#else
 #include <M5Unified.h>
+#endif
 #include "state_machine.hpp"
 
 class Display

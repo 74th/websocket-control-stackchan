@@ -1,7 +1,14 @@
 // Arduino IDE: board = ESP32S3系, ライブラリ: M5Unified, Links2004/WebSocketsClient
 // 事前に: Tools→PSRAM有効（SEはPSRAM無しでも動くよう小さめバッファ）
 
+#if USE_STACKCHAN_BSP
+#define protected public
+#include <M5StackChan.h>
+#undef protected
+#else
 #include <M5Unified.h>
+#endif
+
 #include <WiFi.h>
 #include <WebSocketsClient.h>
 #include <algorithm>
@@ -371,6 +378,13 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
 
 void setup()
 {
+#if USE_STACKCHAN_BSP
+  M5.begin();
+  M5StackChan.TouchSensor.begin();
+  M5StackChan.io_expander_init();
+  M5StackChan.ina226_init();
+#else
+
   auto cfg = M5.config();
 #if defined(ARDUINO_M5STACK_ATOMS3R)
   cfg.external_speaker.atomic_echo = 1;
@@ -378,7 +392,10 @@ void setup()
 #if defined(ARDUINO_ATOM_ECHOS3R)
   cfg.internal_mic = true;
 #endif
+
   M5.begin(cfg);
+#endif
+
   auto mic_cfg = M5.Mic.config();
   mic_cfg.sample_rate = SAMPLE_RATE;
   mic_cfg.dma_buf_len = 256;
@@ -448,7 +465,11 @@ void setup()
 
 void loop()
 {
+#if USE_STACKCHAN_BSP
+  M5StackChan.update();
+#else
   M5.update();
+#endif
   wsClient.loop();
   handleCommunicationTimeout();
   servo.loop();
