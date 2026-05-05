@@ -1,0 +1,144 @@
+syntax = "proto3";
+
+package stackchan.websocket.v1;
+
+// One WebSocket binary frame carries exactly one WebSocketMessage.
+//
+// Instead of concatenating two protobuf messages such as Header + Body,
+// this envelope keeps the routing metadata and the typed body together in a
+// single protobuf message. The `kind` / `message_type` fields preserve the
+// current protocol semantics, while `body` provides strongly typed payloads
+// for Python and firmware implementations.
+message WebSocketMessage {
+  MessageKind kind = 1;
+  MessageType message_type = 2;
+  uint32 seq = 3; // current implementation uses uint16, but proto uses uint32
+
+  oneof body {
+    AudioPcmStart audio_pcm_start = 10;
+    AudioChunk audio_pcm_data = 11;
+    AudioPcmEnd audio_pcm_end = 12;
+
+    AudioWavStart audio_wav_start = 20;
+    AudioChunk audio_wav_data = 21;
+    AudioWavEnd audio_wav_end = 22;
+
+    StateCommand state_cmd = 30;
+    WakeWordEvent wake_word_evt = 31;
+    StateEvent state_evt = 32;
+    SpeakDoneEvent speak_done_evt = 33;
+    ServoCommandSequence servo_cmd = 34;
+    ServoDoneEvent servo_done_evt = 35;
+    FirmwareMetadata firmware_metadata = 36;
+    ServerMetadata server_metadata = 37;
+  }
+}
+
+enum MessageKind {
+  MESSAGE_KIND_UNSPECIFIED = 0;
+  MESSAGE_KIND_AUDIO_PCM = 1;
+  MESSAGE_KIND_AUDIO_WAV = 2;
+  MESSAGE_KIND_STATE_CMD = 3;
+  MESSAGE_KIND_WAKE_WORD_EVT = 4;
+  MESSAGE_KIND_STATE_EVT = 5;
+  MESSAGE_KIND_SPEAK_DONE_EVT = 6;
+  MESSAGE_KIND_SERVO_CMD = 7;
+  MESSAGE_KIND_SERVO_DONE_EVT = 8;
+  MESSAGE_KIND_FIRMWARE_METADATA = 9;
+  MESSAGE_KIND_SERVER_METADATA = 10;
+}
+
+enum MessageType {
+  MESSAGE_TYPE_UNSPECIFIED = 0;
+  MESSAGE_TYPE_START = 1;
+  MESSAGE_TYPE_DATA = 2;
+  MESSAGE_TYPE_END = 3;
+}
+
+enum StackchanState {
+  STACKCHAN_STATE_IDLE = 0;
+  STACKCHAN_STATE_LISTENING = 1;
+  STACKCHAN_STATE_THINKING = 2;
+  STACKCHAN_STATE_SPEAKING = 3;
+}
+
+enum ServoOperation {
+  SERVO_OPERATION_SLEEP = 0;
+  SERVO_OPERATION_MOVE_X = 1;
+  SERVO_OPERATION_MOVE_Y = 2;
+}
+
+enum DeviceType {
+  DEVICE_TYPE_UNSPECIFIED = 0;
+  DEVICE_TYPE_M5STACK_CORES3 = 1;
+  DEVICE_TYPE_M5ATOM_S3R = 2;
+  DEVICE_TYPE_M5ATOM_ECHOS3R = 3;
+}
+
+enum ServoType {
+  SERVO_TYPE_UNSPECIFIED = 0;
+  SERVO_TYPE_NONE = 1;
+  SERVO_TYPE_SG90 = 2;
+  SERVO_TYPE_SCS0009 = 3;
+}
+
+message AudioPcmStart {}
+
+message AudioPcmEnd {}
+
+message AudioWavStart {
+  uint32 sample_rate = 1;
+  uint32 channels = 2;
+}
+
+message AudioWavEnd {}
+
+message AudioChunk {
+  bytes pcm_bytes = 1;
+}
+
+message StateCommand {
+  StackchanState state = 1;
+}
+
+message WakeWordEvent {
+  bool detected = 1;
+}
+
+message StateEvent {
+  StackchanState state = 1;
+}
+
+message SpeakDoneEvent {
+  bool done = 1;
+}
+
+message ServoCommandSequence {
+  repeated ServoCommand commands = 1;
+}
+
+message ServoCommand {
+  ServoOperation op = 1;
+  sint32 angle = 2;       // used by MOVE_X / MOVE_Y
+  sint32 duration_ms = 3; // used by all operations
+}
+
+message ServoDoneEvent {
+  bool done = 1;
+}
+
+message FirmwareMetadata {
+  DeviceType device_type = 1;
+  uint32 display_width = 2;
+  uint32 display_height = 3;
+  bool has_device_wake_word = 4;
+  bool has_led = 5;
+  ServoType servo_type = 6;
+  bool supports_audio_duplex = 7;
+  string firmware_version = 8;
+}
+
+message ServerMetadata {
+  bool has_server_wake_word = 1;
+  string server_version = 2;
+}

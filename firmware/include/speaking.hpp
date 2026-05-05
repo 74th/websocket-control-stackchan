@@ -19,8 +19,10 @@ public:
   void begin();
   void end();
 
-  // Process one WS audio message of kind AudioWav
-  void handleWavMessage(const WsHeader &hdr, const uint8_t *body, size_t bodyLen);
+  // Process AudioWav protobuf messages.
+  void handleWavStart(uint32_t seq, uint32_t sampleRate, uint16_t channels);
+  void handleWavData(uint32_t seq, const uint8_t *body, size_t bodyLen);
+  void handleWavEnd(uint32_t seq);
 
   // Called from main loop to progress playback state
   void loop();
@@ -37,7 +39,7 @@ private:
   bool playing_ = false;
   bool mic_was_enabled_ = false;
   bool streaming_ = false;
-  uint16_t next_seq_ = 0;
+  uint32_t next_seq_ = 0;
   uint32_t sample_rate_ = 24000;
   uint16_t channels_ = 1;
   std::function<void()> on_speak_finished_;

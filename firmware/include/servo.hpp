@@ -51,7 +51,7 @@ private:
 
   struct Step
   {
-    ServoCommandOp op;
+    stackchan_websocket_v1_ServoOperation op;
     int8_t angle = 0;
     int16_t duration_ms = 0;
   };
