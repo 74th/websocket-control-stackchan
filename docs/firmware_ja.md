@@ -11,8 +11,8 @@
 
 - env:m5stack-cores3-m5unified: M5Stack CoreS3(SKU:K128, K128-Lite, K128-SE)
 - env:m5stack-atoms3r-m5unified: M5Atom S3R(SKU:C126)とAtomic Echo Base(SKU:A149)
-- env:m5stack-atoms3r-m5unified: M5Atom EchoS3R(SKU:C126-ECHO)
 - env:m5stack-official-stackchan: M5Stack公式StackChan(SKU:K151)
+<!-- - env:m5stack-atoms3r-m5unified: M5Atom EchoS3R(SKU:C126-ECHO) -->
 
 ## WiFi設定
 

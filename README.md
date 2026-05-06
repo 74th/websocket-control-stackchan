@@ -98,9 +98,9 @@ async def talk_session(proxy: WsProxy):
 ## 現在開発中の環境
 
 - コア:
-    - M5Stack CoreS3 SE
-    - M5Stack Atom S3R + Atomic Echo Base
-    - M5Stack公式StackChan
+    - M5Stack CoreS3(SKU:K128, K128-Lite, K128-SE)
+    - M5Stack Atom S3R(SKU:C126) + Atomic Echo Base(SKU:A149)
+    - M5Stack公式StackChan(SKU:K151)
     <!-- - M5Stack Atom EchoS3R -->
 - サーボ（なくても動作します）:
     - Tower Pro SG90
