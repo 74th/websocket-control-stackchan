@@ -1,7 +1,14 @@
 // Arduino IDE: board = ESP32S3系, ライブラリ: M5Unified, Links2004/WebSocketsClient
 // 事前に: Tools→PSRAM有効（SEはPSRAM無しでも動くよう小さめバッファ）
 
+#if USE_STACKCHAN_BSP
+#define protected public
+#include <M5StackChan.h>
+#undef protected
+#else
 #include <M5Unified.h>
+#endif
+
 #include <WiFi.h>
 #include <WebSocketsClient.h>
 #include <algorithm>
@@ -41,7 +48,9 @@ namespace
 {
 uint32_t g_uplink_seq = 0;
 uint32_t g_last_comm_ms = 0;
+uint32_t g_last_local_wake_word_ms = 0;
 constexpr uint32_t kCommTimeoutMs = 60000;
+constexpr uint32_t kLocalWakeWordCooldownMs = 750;
 stackchan_websocket_v1_WebSocketMessage g_tx_message = stackchan_websocket_v1_WebSocketMessage_init_zero;
 stackchan_websocket_v1_WebSocketMessage g_rx_message = stackchan_websocket_v1_WebSocketMessage_init_zero;
 
@@ -105,6 +114,67 @@ void notifyWakeWordDetected()
   if (!sendUplinkMessage(message))
   {
     log_w("Failed to send WakeWordEvt");
+  }
+}
+
+bool canTriggerLocalWakeWord()
+{
+  if (!shouldUseDeviceWakeWord())
+  {
+    return false;
+  }
+
+  if (stateMachine.getState() != StateMachine::Idle)
+  {
+    return false;
+  }
+
+  if ((WiFi.status() != WL_CONNECTED) || !wsClient.isConnected())
+  {
+    return false;
+  }
+
+  uint32_t now = millis();
+  if (g_last_local_wake_word_ms != 0 &&
+      now - g_last_local_wake_word_ms < kLocalWakeWordCooldownMs)
+  {
+    return false;
+  }
+
+  return true;
+}
+
+void triggerLocalWakeWord(const char *source)
+{
+  if (!canTriggerLocalWakeWord())
+  {
+    return;
+  }
+
+  g_last_local_wake_word_ms = millis();
+  log_i("Local wake-word trigger from %s", source);
+  notifyWakeWordDetected();
+}
+
+void handleTouchWakeWordInput()
+{
+#if USE_STACKCHAN_BSP
+  if (M5StackChan.TouchSensor.wasClicked())
+  {
+    triggerLocalWakeWord("top touch sensor");
+    return;
+  }
+#endif
+
+  if (!M5.Touch.isEnabled() || M5.Touch.getCount() == 0)
+  {
+    return;
+  }
+
+  const auto &touch = M5.Touch.getDetail(0);
+  if (touch.wasClicked())
+  {
+    triggerLocalWakeWord("screen touch");
   }
 }
 
@@ -371,6 +441,13 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
 
 void setup()
 {
+#if USE_STACKCHAN_BSP
+  M5.begin();
+  M5StackChan.TouchSensor.begin();
+  M5StackChan.io_expander_init();
+  M5StackChan.ina226_init();
+#else
+
   auto cfg = M5.config();
 #if defined(ARDUINO_M5STACK_ATOMS3R)
   cfg.external_speaker.atomic_echo = 1;
@@ -378,7 +455,10 @@ void setup()
 #if defined(ARDUINO_ATOM_ECHOS3R)
   cfg.internal_mic = true;
 #endif
+
   M5.begin(cfg);
+#endif
+
   auto mic_cfg = M5.Mic.config();
   mic_cfg.sample_rate = SAMPLE_RATE;
   mic_cfg.dma_buf_len = 256;
@@ -448,7 +528,11 @@ void setup()
 
 void loop()
 {
+#if USE_STACKCHAN_BSP
+  M5StackChan.update();
+#else
   M5.update();
+#endif
   wsClient.loop();
   handleCommunicationTimeout();
   servo.loop();
@@ -457,6 +541,7 @@ void loop()
   switch (current)
   {
   case StateMachine::Idle:
+    handleTouchWakeWordInput();
     if (shouldUseDeviceWakeWord())
     {
       wakeUpWord.loop();

@@ -9,6 +9,13 @@
 
 // Leave both servo options commented out if you are using a StackChan without a body.
 
+#if USE_STACKCHAN_BSP
+// -- using M5Stack Official StackChan
+// #define SCS0009_X_CENTER_OFFSET 0
+// #define SCS0009_Y_CENTER_OFFSET -35
+// #define RGBLED_BRIGHTNESS 255
+#else
+
 // -- using SG90 --
 #define USE_SERVO_SG90 1
 
@@ -30,8 +37,8 @@
 // #define USE_SERVO_SCS0009 1
 
 // CoreS3 PortC
-// #define SCS_SRIAL_RX_PIN 17
-// #define SCS_SRIAL_TX_PIN 18
+// #define SCS0009_RX_PIN 17
+// #define SCS0009_TX_PIN 18
 
 // #define SCS0009_X_ID 1
 // #define SCS0009_Y_ID 2
@@ -39,3 +46,11 @@
 // Positive values bias X to the right and Y upward; negative values bias X to the left and Y downward
 // #define SCS0009_X_CENTER_OFFSET 0
 // #define SCS0009_Y_CENTER_OFFSET 0
+
+// -- RGBLED (ex: M5GO Bottom3)--
+// #define USE_RGBLED 1
+// #define RGBLED_PIN 5
+// #define RGBLED_NUM_LEDS 10
+// #define RGBLED_BRIGHTNESS 255
+
+#endif

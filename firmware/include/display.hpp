@@ -1,6 +1,16 @@
 #pragma once
 
+#include "config.h"
+
+#ifndef RGBLED_BRIGHTNESS
+#define RGBLED_BRIGHTNESS 255
+#endif
+
+#if USE_STACKCHAN_BSP
+#include <M5StackChan.h>
+#else
 #include <M5Unified.h>
+#endif
 #include "state_machine.hpp"
 
 class Display
