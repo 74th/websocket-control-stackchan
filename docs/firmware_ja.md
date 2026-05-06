@@ -42,7 +42,6 @@ WebSocketのパスは変更不要です。
 #define SERVER_PORT_H 8000              // 例: FastAPIのポート
 #define SERVER_PATH_H "/ws/stackchan"      // WebSocketパス
 ```
-
 ## サーボ
 
 サーボモータに合わせて、コメントアウトされている設定の有効化と、ピンの設定を記述してください。
@@ -139,6 +138,28 @@ https://github.com/74th/stackchan-book-code/blob/main/3.4_scs0009
 ID:2 にしたいサーボだけを接続してください。
 `setID(1, 2);`がコメントアウトされていますので、コメントアウトを外してビルドして、CoreS3に書き込んでください。
 実行すると、ID:1 のサーボが ID:2 に変更されます。
+
+## (オプション) RGB LED
+
+ステータスバーの色に合わせてRGB LEDを光らせることができます。
+
+- M5Stack公式StackChanでは、本体のRGB LED 12個が同じ色で光ります。
+- それ以外の構成では、`USE_RGBLED` を有効にすると外付けのNeoPixel互換RGB LEDを同じ色で光らせられます。
+
+`RGBLED_BRIGHTNESS` で明るさを調整できます。
+値は大きいほど明るくなります。
+
+M5GO Bottom3を使う場合の設定例は以下です。
+
+```h
+#define USE_RGBLED 1
+#define RGBLED_PIN 5
+#define RGBLED_NUM_LEDS 10
+#define RGBLED_BRIGHTNESS 255
+```
+
+必要に応じて、接続しているLEDの本数とデータピン番号を変更してください。
+
 
 ## ビルドする
 

@@ -13,6 +13,7 @@
 // -- using M5Stack Official StackChan
 // #define SCS0009_X_CENTER_OFFSET 0
 // #define SCS0009_Y_CENTER_OFFSET -35
+// #define RGBLED_BRIGHTNESS 255
 #else
 
 // -- using SG90 --
@@ -45,5 +46,11 @@
 // Positive values bias X to the right and Y upward; negative values bias X to the left and Y downward
 // #define SCS0009_X_CENTER_OFFSET 0
 // #define SCS0009_Y_CENTER_OFFSET 0
+
+// -- RGBLED (ex: M5GO Bottom3)--
+// #define USE_RGBLED 1
+// #define RGBLED_PIN 5
+// #define RGBLED_NUM_LEDS 10
+// #define RGBLED_BRIGHTNESS 255
 
 #endif
