@@ -28,6 +28,7 @@ from .static import LISTEN_AUDIO_FORMAT
 from .types import SpeechRecognizer, SpeechSynthesizer
 from .wakeup_word_detection import (
     WakeWordDetectionError,
+    WakeWordDetectionTimeout,
     create_server_side_wake_word_detector,
 )
 
@@ -340,7 +341,9 @@ class WsProxy:
             return await asyncio.wait_for(asyncio.shield(task), timeout=timeout_seconds)
         except asyncio.TimeoutError as exc:
             await self.stop_server_wakeword_detection()
-            raise WakeWordDetectionError("Server-side wake-word detection timed out") from exc
+            raise WakeWordDetectionTimeout(
+                "Server-side wake-word detection timed out"
+            ) from exc
 
     async def _receive_loop(self) -> None:
         try:
@@ -631,6 +634,9 @@ class WsProxy:
             return detected
         except asyncio.CancelledError:
             raise
+        except WakeWordDetectionTimeout as exc:
+            logger.info("Server-side wake-word detection stopped: %s", exc)
+            return False
         except WakeWordDetectionError as exc:
             logger.warning("Server-side wake-word detection stopped: %s", exc)
             return False

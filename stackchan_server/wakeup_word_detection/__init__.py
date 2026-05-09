@@ -1,6 +1,7 @@
 from .create import create_server_side_wake_word_detector
 from .whisper_server import (
     WakeWordDetectionError,
+    WakeWordDetectionTimeout,
     WhisperServerWakeWordDetector,
     WhisperServerWakeWordDetectorConfig,
     WhisperServerWakeWordSpeechToTextConfig,
@@ -12,4 +13,5 @@ __all__ = [
     "WhisperServerWakeWordDetectorConfig",
     "WhisperServerWakeWordSpeechToTextConfig",
     "WakeWordDetectionError",
+    "WakeWordDetectionTimeout",
 ]

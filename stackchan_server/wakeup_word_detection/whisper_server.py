@@ -20,11 +20,15 @@ class WakeWordDetectionError(Exception):
     pass
 
 
+class WakeWordDetectionTimeout(WakeWordDetectionError):
+    pass
+
+
 class WhisperServerWakeWordDetectorConfig(BaseSettings):
     keywords: list[str] = Field(default_factory=lambda: ["スタックチャン"])
     window_seconds: float = 3.0
     interval_seconds: float = 0.5
-    timeout_seconds: float = 30.0
+    timeout_seconds: float = 300.0
 
     class Config:
         env_prefix = "STACKCHAN_WWD_"
@@ -154,7 +158,9 @@ class WhisperServerWakeWordDetector:
         try:
             await asyncio.wait_for(self._event.wait(), timeout=timeout)
         except asyncio.TimeoutError as exc:
-            raise WakeWordDetectionError("Server-side wake-word detection timed out") from exc
+            raise WakeWordDetectionTimeout(
+                "Server-side wake-word detection timed out"
+            ) from exc
 
         if self._error is not None:
             raise WakeWordDetectionError(str(self._error)) from self._error
@@ -213,4 +219,5 @@ __all__ = [
     "WhisperServerWakeWordDetectorConfig",
     "WhisperServerWakeWordSpeechToTextConfig",
     "WakeWordDetectionError",
+    "WakeWordDetectionTimeout",
 ]
