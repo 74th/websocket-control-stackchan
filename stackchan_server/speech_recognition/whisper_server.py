@@ -25,9 +25,10 @@ _DEFAULT_SERVER_URL = "http://127.0.0.1:8080/inference"
 
 class WhisperServerSpeechToTextConfig(BaseSettings):
     url: str = _DEFAULT_SERVER_URL
-    language: str = "auto"
+    language: str = ""
     detect_language: bool = False
     response_format: str = "verbose_json"
+    prompt: str = ""
     silence_rms_threshold: float = _DEFAULT_SILENCE_RMS_THRESHOLD
     request_timeout_seconds: float = 60.0
     model: str = ""
@@ -73,8 +74,14 @@ class WhisperServerSpeechToText(SpeechRecognizer):
     def _request_transcript(self, wav_bytes: bytes, language: str) -> str:
         fields = {
             "response_format": self._conf.response_format,
-            "language": language,
         }
+
+        normalized_language = language.strip()
+        if normalized_language:
+            fields["language"] = normalized_language
+
+        if self._conf.prompt:
+            fields["prompt"] = self._conf.prompt
 
         if self._conf.model:
             fields["model"] = self._conf.model
