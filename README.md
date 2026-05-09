@@ -117,3 +117,10 @@ async def talk_session(proxy: WsProxy):
 - ファームウェア [firmware/](./firmware/)
 - Pythonサーバのライブラリ [stackchan_server/](./stackchan_server/)
 - サンプルアプリケーション [example_apps/](./example_apps/)
+
+## LICENSE
+
+[MIT License](./LICENSE.md)
+
+This project includes files derived from third-party MIT-licensed projects.
+See [NOTICE.md](./NOTICE.md) for third-party copyright and license notices.
