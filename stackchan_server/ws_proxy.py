@@ -140,7 +140,6 @@ class WsProxy:
             ),
             close_websocket=self.ws.close,
             current_state=lambda: int(self._current_firmware_state),
-            has_server_wake_word=lambda: self.server_metadata.has_server_wake_word,
             is_closed=lambda: self._closed,
             on_detected=self._wakeword_event.set,
             has_pending_wakeword=self._wakeword_event.is_set,
@@ -262,6 +261,8 @@ class WsProxy:
 
     async def enable_auto_server_wakeword_detection(self) -> None:
         await self._server_wwd.enable_auto_detection()
+        if self.firmware_metadata is not None:
+            await self._server_wwd.start_if_available()
 
     async def _receive_loop(self) -> None:
         try:

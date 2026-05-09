@@ -24,7 +24,6 @@ class ServerWwdController:
         set_current_state: Callable[[int], None],
         close_websocket: Callable[[int, str], Awaitable[None]],
         current_state: Callable[[], int],
-        has_server_wake_word: Callable[[], bool],
         is_closed: Callable[[], bool],
         on_detected: Callable[[], None],
         has_pending_wakeword: Callable[[], bool],
@@ -35,7 +34,6 @@ class ServerWwdController:
         self._set_current_state = set_current_state
         self._close_websocket = close_websocket
         self._current_state = current_state
-        self._has_server_wake_word = has_server_wake_word
         self._is_closed = is_closed
         self._on_detected = on_detected
         self._has_pending_wakeword = has_pending_wakeword
@@ -59,13 +57,11 @@ class ServerWwdController:
 
     async def enable_auto_detection(self) -> None:
         self._auto_start = True
-        await self.start_if_available()
 
     async def start_if_available(self) -> bool:
         if (
             self._is_closed()
             or self._detector is None
-            or not self._has_server_wake_word()
             or self._current_state() != self._idle_state
         ):
             return False
