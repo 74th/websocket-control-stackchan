@@ -64,5 +64,3 @@ PB_BIND(stackchan_websocket_v1_ServerMetadata, stackchan_websocket_v1_ServerMeta
 
 
 
-
-

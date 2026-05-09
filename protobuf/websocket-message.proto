@@ -61,12 +61,7 @@ enum StackchanState {
   STACKCHAN_STATE_LISTENING = 1;
   STACKCHAN_STATE_THINKING = 2;
   STACKCHAN_STATE_SPEAKING = 3;
-}
-
-enum ListeningPurpose {
-  LISTENING_PURPOSE_UNSPECIFIED = 0;
-  LISTENING_PURPOSE_SPEECH = 1;
-  LISTENING_PURPOSE_WAKE_WORD = 2;
+  STACKCHAN_STATE_SERVER_WWD = 4;
 }
 
 enum ServoOperation {
@@ -106,7 +101,6 @@ message AudioChunk {
 
 message StateCommand {
   StackchanState state = 1;
-  ListeningPurpose listening_purpose = 2;
 }
 
 message WakeWordEvent {

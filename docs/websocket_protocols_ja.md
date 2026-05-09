@@ -75,7 +75,7 @@
 
 ### 現行実装メモ
 
-- `StateCmd(Listening, WAKE_WORD)` を受けた CoreS3 は、見た目の状態を `Idle(Server-WWD)` のままにしてこの kind で uplink します。
+- `StateCmd(ServerWwd)` を受けた CoreS3 は、この kind で uplink を開始します。
 - 無音 3 秒によるクライアント側自動終了は行いません。
 - サーバーはこの kind だけを server-side wakeword detector にルーティングします。
 
@@ -106,7 +106,7 @@
 
 - 方向: Server → CoreS3
 - `messageType`: `DATA` のみ
-- body: `StateCommand { state, listening_purpose }`
+- body: `StateCommand { state }`
 
 利用する状態名:
 
@@ -114,21 +114,17 @@
 - `Listening`
 - `Thinking`
 - `Speaking`
-
-`listening_purpose` の値:
-
-- `SPEECH`: 通常の会話入力
-- `WAKE_WORD`: サーバーサイド wakeword 検出用の uplink
+- `ServerWwd`
 
 ### 現行実装メモ
 
-- `proxy.listen()` 開始時に Server が `StateCmd(Listening, SPEECH)` を指示します。
-- サーバーサイド wakeword 検出開始時は `StateCmd(Listening, WAKE_WORD)` を指示します。
+- `proxy.listen()` 開始時に Server が `StateCmd(Listening)` を指示します。
+- サーバーサイド wakeword 検出開始時は `StateCmd(ServerWwd)` を指示します。
 - 音声 uplink の `END` を受けると、Server は `Thinking` を指示します。
 - `proxy.speak()` 完了後、Server は `Idle` を指示します。
 
 > [!NOTE]
-> `WAKE_WORD` の場合、CoreS3 は内部的にマイク uplink を開始しますが、状態表示は `Listening` に遷移せず `Idle(Server-WWD)` のままです。また無音 3 秒による自動終了も行いません。
+> `ServerWwd` の場合、CoreS3 は内部的にマイク uplink を開始しますが、表示は `Idle(Server-WWD)` にし、無音 3 秒による自動終了も行いません。
 
 ## ウェイクワード検出 `WakeWordEvt`
 
@@ -154,7 +150,7 @@ CoreS3 側は `has_server_wake_word=true` を受けると、デバイス側 wake
 ## サーバーサイド wakeword 検出フロー
 
 - 環境変数 `STACKCHAN_USE_WWD_WHISPER_SERVER=1` の場合、サーバーは `@app.setup()` 完了後と `Idle` 復帰後に自動でサーバーサイド wakeword 検出を開始します。
-- サーバーは `StateCmd(Listening, WAKE_WORD)` を送信して `MESSAGE_KIND_SERVER_WWD_PCM` のマイク uplink を受信します。
+- サーバーは `StateCmd(ServerWwd)` を送信して `MESSAGE_KIND_SERVER_WWD_PCM` のマイク uplink を受信します。
 - 受信した音声の直近 3 秒窓を 0.5 秒ごとに音声認識へ渡し、
   定義キーワード（例: `スタクチャン`）を含むか判定します。
 - 各判定タイミングの認識結果はすべてログ出力されます。
@@ -174,6 +170,7 @@ CoreS3 側は `has_server_wake_word=true` を受けると、デバイス側 wake
 - `Listening`
 - `Thinking`
 - `Speaking`
+- `ServerWwd`
 
 - CoreS3 は状態遷移の entry hook で送信します。
 - WebSocket 切断中は `Disconnected` 状態になりますが、切断時は uplink 送信できないため `StateEvt` では通知されません。

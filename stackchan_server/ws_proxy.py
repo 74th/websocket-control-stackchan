@@ -17,7 +17,6 @@ from . import __version__
 from .generated_protobuf import websocket_message_pb2 as _ws_pb2
 from .listen import EmptyTranscriptError, ListenHandler, TimeoutError
 from .protobuf_ws import (
-    ListeningPurpose,
     encode_server_metadata_message,
     encode_servo_command_message,
     encode_state_command_message,
@@ -57,6 +56,7 @@ class FirmwareState(IntEnum):
     LISTENING = 1
     THINKING = 2
     SPEAKING = 3
+    SERVER_WWD = 4
 
 
 class ServoMoveType(StrEnum):
@@ -199,13 +199,8 @@ class WsProxy:
     async def send_state_command(
         self,
         state_id: int | FirmwareState,
-        *,
-        listening_purpose: ListeningPurpose = ListeningPurpose.SPEECH,
     ) -> None:
-        await self._send_state_command(
-            state_id,
-            listening_purpose=listening_purpose,
-        )
+        await self._send_state_command(state_id)
 
     async def reset_state(self) -> None:
         await self.send_state_command(FirmwareState.IDLE)
@@ -585,14 +580,11 @@ class WsProxy:
     async def _send_state_command(
         self,
         state_id: int | FirmwareState,
-        *,
-        listening_purpose: ListeningPurpose = ListeningPurpose.SPEECH,
     ) -> None:
         await self._send_ws_bytes(
             encode_state_command_message(
                 self._next_down_seq(),
                 int(state_id),
-                listening_purpose=int(listening_purpose),
             )
         )
 
@@ -624,10 +616,7 @@ class WsProxy:
         should_restart = False
         try:
             await detector.start()
-            await self.send_state_command(
-                FirmwareState.LISTENING,
-                listening_purpose=ListeningPurpose.WAKE_WORD,
-            )
+            await self.send_state_command(FirmwareState.SERVER_WWD)
             detected = await detector.wait_result()
             if detected:
                 self._wakeword_event.set()

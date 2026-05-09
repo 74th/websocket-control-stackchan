@@ -14,7 +14,8 @@ public:
     Listening = 1,
     Thinking = 2,
     Speaking = 3,
-    Disconnected = 4,
+    ServerWwd = 4,
+    Disconnected = 5,
   };
 
   StateMachine() = default;
@@ -25,6 +26,7 @@ public:
   bool isListening() const;
   bool isThinking() const;
   bool isSpeaking() const;
+  bool isServerWwd() const;
   bool isDisconnected() const;
 
   using Callback = std::function<void(State prev, State next)>;
@@ -33,8 +35,8 @@ public:
 
 private:
   State state_ = Disconnected;
-  std::array<std::vector<Callback>, 5> entry_events_{};
-  std::array<std::vector<Callback>, 5> exit_events_{};
+  std::array<std::vector<Callback>, 6> entry_events_{};
+  std::array<std::vector<Callback>, 6> exit_events_{};
 };
 
 const char *stateToString(StateMachine::State state);

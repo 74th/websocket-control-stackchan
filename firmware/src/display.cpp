@@ -71,14 +71,12 @@ void Display::init()
   drawFace();
   has_prev_state_ = true;
   prev_state_ = state_.getState();
-  prev_server_wake_word_idle_ = shouldShowServerWakeWordIdle();
 }
 
 void Display::loop()
 {
   StateMachine::State current = state_.getState();
-  bool current_server_wake_word_idle = shouldShowServerWakeWordIdle();
-  if (!has_prev_state_ || current != prev_state_ || current_server_wake_word_idle != prev_server_wake_word_idle_)
+  if (!has_prev_state_ || current != prev_state_)
   {
     GFXModule.fillScreen(TFT_BLACK);
     drawForState(current);
@@ -86,7 +84,6 @@ void Display::loop()
   }
 
   prev_state_ = current;
-  prev_server_wake_word_idle_ = current_server_wake_word_idle;
   has_prev_state_ = true;
 }
 
@@ -123,6 +120,11 @@ void Display::drawForState(StateMachine::State state)
     font_color = TFT_BLACK;
     led_color = Adafruit_NeoPixel::ColorHSV(kLedHueGreen, 255, ledValueFromBrightness());
     break;
+  case StateMachine::ServerWwd:
+    bg_color = TFT_DARKGRAY;
+    font_color = TFT_WHITE;
+    led_color = Adafruit_NeoPixel::ColorHSV(0, 0, 0);
+    break;
   case StateMachine::Disconnected:
     bg_color = TFT_RED;
     font_color = TFT_WHITE;
@@ -141,7 +143,7 @@ void Display::drawForState(StateMachine::State state)
   GFXModule.setTextSize(1);
   GFXModule.setTextColor(font_color, bg_color);
   GFXModule.setCursor(isAtomS3R() ? 4 : 10, bar_y + (isAtomS3R() ? 6 : 2));
-  if (state == StateMachine::Idle && shouldUseServerWakeWord())
+  if (state == StateMachine::ServerWwd)
   {
     GFXModule.printf("Idle(Server-WWD)");
     return;
@@ -175,11 +177,6 @@ bool Display::isAtomS3R() const
 #else
   return false;
 #endif
-}
-
-bool Display::shouldShowServerWakeWordIdle() const
-{
-  return state_.getState() == StateMachine::Idle && shouldUseServerWakeWord();
 }
 
 int32_t Display::statusBarHeight() const

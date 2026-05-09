@@ -26,10 +26,8 @@ private:
   void drawFace();
   bool isAtomS3R() const;
   int32_t statusBarHeight() const;
-  bool shouldShowServerWakeWordIdle() const;
 
   StateMachine &state_;
   bool has_prev_state_ = false;
   StateMachine::State prev_state_ = StateMachine::Idle;
-  bool prev_server_wake_word_idle_ = false;
 };
