@@ -22,14 +22,10 @@ from .protobuf_ws import (
     encode_state_command_message,
     parse_websocket_message,
 )
+from .server_wwd import ServerWwdController
 from .speak import SpeakHandler
 from .static import LISTEN_AUDIO_FORMAT
 from .types import SpeechRecognizer, SpeechSynthesizer
-from .wakeup_word_detection import (
-    WakeWordDetectionError,
-    WakeWordDetectionTimeout,
-    create_server_side_wake_word_detector,
-)
 
 logger = getLogger(__name__)
 
@@ -47,8 +43,6 @@ _DOWN_SEGMENT_STAGGER_MILLIS = (
 )  # half interval for the second segment start
 _LISTEN_AUDIO_TIMEOUT_SECONDS = 10.0
 _DEBUG_RECORDING_ENABLED = os.getenv("DEBUG_RECODING") == "1"
-_SERVER_WAKEWORD_RESTART_DELAY_SECONDS = 0.25
-_TRAILING_PCM_DRAIN_SECONDS = 1.0
 
 
 class FirmwareState(IntEnum):
@@ -125,13 +119,6 @@ class WsProxy:
             recordings_dir=self.recordings_dir,
             debug_recording=self._debug_recording,
         )
-        self._server_wakeword_detector = create_server_side_wake_word_detector()
-        self._server_wakeword_task: Optional[asyncio.Task[bool]] = None
-        self._server_wakeword_restart_task: Optional[asyncio.Task[None]] = None
-        self._auto_start_server_wakeword = False
-        self._drain_trailing_pcm_until_end = False
-        self._drain_trailing_pcm_deadline: float | None = None
-
         self._receiving_task: Optional[asyncio.Task] = None
         self._closed = False
 
@@ -146,6 +133,20 @@ class WsProxy:
         self._servo_done_counter = 0
         self._servo_sent_counter = 0
         self._pending_servo_wait_targets: deque[int] = deque()
+        self._server_wwd = ServerWwdController(
+            send_state_command=self.send_state_command,
+            set_current_state=lambda state: setattr(
+                self, "_current_firmware_state", FirmwareState(state)
+            ),
+            close_websocket=self.ws.close,
+            current_state=lambda: int(self._current_firmware_state),
+            has_server_wake_word=lambda: self.server_metadata.has_server_wake_word,
+            is_closed=lambda: self._closed,
+            on_detected=self._wakeword_event.set,
+            has_pending_wakeword=self._wakeword_event.is_set,
+            server_wwd_state=int(FirmwareState.SERVER_WWD),
+            idle_state=int(FirmwareState.IDLE),
+        )
 
     @property
     def closed(self) -> bool:
@@ -161,7 +162,7 @@ class WsProxy:
 
     @property
     def has_server_wakeword_detector(self) -> bool:
-        return self._server_wakeword_detector is not None
+        return self._server_wwd.available
 
     def trigger_wakeword(self) -> None:
         """Web API から擬似的に WAKEWORD_EVT を発火させる。"""
@@ -171,7 +172,7 @@ class WsProxy:
     async def wait_for_talk_session(self) -> None:
         while True:
             if self._wakeword_event.is_set():
-                await self._stop_server_wakeword_detection()
+                await self._server_wwd.stop()
                 self._wakeword_event.clear()
                 return
             if self._closed:
@@ -179,7 +180,7 @@ class WsProxy:
             await asyncio.sleep(0.05)
 
     async def listen(self) -> str:
-        await self._stop_server_wakeword_detection()
+        await self._server_wwd.stop()
         return await self._listener.listen(
             send_state_command=self.send_state_command,
             is_closed=lambda: self._closed,
@@ -205,7 +206,7 @@ class WsProxy:
     async def reset_state(self) -> None:
         await self.send_state_command(FirmwareState.IDLE)
         self._current_firmware_state = FirmwareState.IDLE
-        self._schedule_server_wakeword_restart()
+        self._server_wwd.schedule_restart()
 
     async def move_servo(self, commands: Sequence[ServoCommand]) -> None:
         previous_counter = self._servo_sent_counter
@@ -245,8 +246,7 @@ class WsProxy:
 
     async def close(self) -> None:
         self._closed = True
-        self._cancel_server_wakeword_restart_task()
-        await self._stop_server_wakeword_detection()
+        await self._server_wwd.stop()
         if self._receiving_task:
             self._receiving_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -261,52 +261,7 @@ class WsProxy:
         await self.speak(text)
 
     async def enable_auto_server_wakeword_detection(self) -> None:
-        self._auto_start_server_wakeword = True
-        await self._start_server_wakeword_detection_if_available()
-
-    async def _start_server_wakeword_detection_if_available(self) -> bool:
-        if (
-            self._closed
-            or self._server_wakeword_detector is None
-            or not self.server_metadata.has_server_wake_word
-            or self.current_state != FirmwareState.IDLE
-        ):
-            return False
-
-        if self._server_wakeword_task is not None and not self._server_wakeword_task.done():
-            return True
-
-        self._cancel_server_wakeword_restart_task()
-        self._server_wakeword_task = asyncio.create_task(
-            self._run_server_wakeword_detection(),
-            name="server-side-wakeword-detection",
-        )
-        return True
-
-    async def _stop_server_wakeword_detection(self) -> None:
-        self._cancel_server_wakeword_restart_task()
-        task = self._server_wakeword_task
-        if task is None:
-            return
-
-        if task.done():
-            self._server_wakeword_task = None
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                logger.exception("Server-side wake-word detection task failed")
-            return
-
-        task.cancel()
-        self._server_wakeword_task = None
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        except Exception:
-            logger.exception("Server-side wake-word detection task failed")
+        await self._server_wwd.enable_auto_detection()
 
     async def _receive_loop(self) -> None:
         try:
@@ -324,7 +279,7 @@ class WsProxy:
                     break
 
                 if message.kind == ws_pb2.MESSAGE_KIND_SERVER_WWD_PCM:
-                    if not await self._handle_server_wakeword_pcm_message(message):
+                    if not await self._server_wwd.handle_pcm_message(message, ws_pb2=ws_pb2):
                         break
                     continue
 
@@ -359,69 +314,6 @@ class WsProxy:
             pass
         finally:
             self._closed = True
-
-    async def _handle_server_wakeword_pcm_message(self, message: Any) -> bool:
-        body_name = message.WhichOneof("body")
-
-        if self._should_drain_trailing_pcm():
-            if (
-                message.message_type == ws_pb2.MESSAGE_TYPE_START
-                and body_name == "audio_pcm_start"
-            ):
-                logger.info(
-                    "Received a new server-side wake-word PCM START while draining trailing audio; resuming normal routing"
-                )
-                self._clear_trailing_pcm_drain()
-            elif (
-                message.message_type == ws_pb2.MESSAGE_TYPE_DATA
-                and body_name == "audio_pcm_data"
-            ):
-                logger.info(
-                    "Discarding trailing server-side wake-word PCM DATA payload_bytes=%d",
-                    len(message.audio_pcm_data.pcm_bytes),
-                )
-                return True
-            elif (
-                message.message_type == ws_pb2.MESSAGE_TYPE_END
-                and body_name == "audio_pcm_end"
-            ):
-                logger.info("Finished draining trailing server-side wake-word PCM")
-                self._clear_trailing_pcm_drain()
-                return True
-
-        detector = self._server_wakeword_detector
-        if detector is None or not detector.running:
-            logger.info(
-                "Ignoring server-side wake-word PCM while detector is inactive type=%s body=%s",
-                message.message_type,
-                body_name,
-            )
-            return True
-
-        if (
-            message.message_type == ws_pb2.MESSAGE_TYPE_START
-            and body_name == "audio_pcm_start"
-        ):
-            await detector.handle_start()
-            return True
-
-        if (
-            message.message_type == ws_pb2.MESSAGE_TYPE_DATA
-            and body_name == "audio_pcm_data"
-        ):
-            payload = bytes(message.audio_pcm_data.pcm_bytes)
-            await detector.handle_data(payload)
-            return True
-
-        if (
-            message.message_type == ws_pb2.MESSAGE_TYPE_END
-            and body_name == "audio_pcm_end"
-        ):
-            await detector.handle_end()
-            return True
-
-        await self.ws.close(code=1003, reason="unknown server wake-word PCM protobuf body")
-        return False
 
     async def _handle_audio_pcm_message(self, message: Any) -> bool:
         body_name = message.WhichOneof("body")
@@ -501,13 +393,13 @@ class WsProxy:
                 server_version=self.server_metadata.server_version,
             )
         )
-        if self._auto_start_server_wakeword:
-            await self._start_server_wakeword_detection_if_available()
+        if self._server_wwd.auto_start_enabled:
+            await self._server_wwd.start_if_available()
 
     def _build_server_metadata(
         self, firmware_metadata: FirmwareMetadata
     ) -> ServerMetadata:
-        should_use_server_wake_word = self._server_wakeword_detector is not None
+        should_use_server_wake_word = self._server_wwd.available
         return ServerMetadata(
             has_server_wake_word=should_use_server_wake_word,
             server_version=__version__,
@@ -574,113 +466,6 @@ class WsProxy:
             raise exc
         self._closed = True
         raise WebSocketDisconnect() from exc
-
-    async def _run_server_wakeword_detection(self) -> bool:
-        detector = self._server_wakeword_detector
-        if detector is None:
-            return False
-
-        detected = False
-        should_restart = False
-        try:
-            await detector.start()
-            await self.send_state_command(FirmwareState.SERVER_WWD)
-            detected = await detector.wait_result()
-            if detected:
-                self._wakeword_event.set()
-            return detected
-        except asyncio.CancelledError:
-            raise
-        except WakeWordDetectionTimeout as exc:
-            logger.info("Server-side wake-word detection stopped: %s", exc)
-            return False
-        except WakeWordDetectionError as exc:
-            logger.warning("Server-side wake-word detection stopped: %s", exc)
-            return False
-        except Exception:
-            logger.exception("Server-side wake-word detection failed")
-            return False
-        finally:
-            await detector.stop()
-            self._arm_trailing_pcm_drain()
-            if not self._closed:
-                self._current_firmware_state = FirmwareState.IDLE
-                try:
-                    await self.send_state_command(FirmwareState.IDLE)
-                except Exception:
-                    logger.exception("Failed to return firmware to idle after wake-word detection")
-            should_restart = (
-                self._auto_start_server_wakeword
-                and not detected
-                and not self._wakeword_event.is_set()
-                and not self._closed
-            )
-            if self._server_wakeword_task is asyncio.current_task():
-                self._server_wakeword_task = None
-            if should_restart:
-                self._schedule_server_wakeword_restart()
-
-    def _schedule_server_wakeword_restart(
-        self,
-        delay_seconds: float = _SERVER_WAKEWORD_RESTART_DELAY_SECONDS,
-    ) -> None:
-        if not self._auto_start_server_wakeword or self._closed:
-            return
-
-        self._cancel_server_wakeword_restart_task()
-        self._server_wakeword_restart_task = asyncio.create_task(
-            self._restart_server_wakeword_detection_after_delay(delay_seconds),
-            name="server-side-wakeword-restart",
-        )
-
-    def _cancel_server_wakeword_restart_task(self) -> None:
-        task = self._server_wakeword_restart_task
-        if task is None:
-            return
-        self._server_wakeword_restart_task = None
-        task.cancel()
-
-    async def _restart_server_wakeword_detection_after_delay(
-        self,
-        delay_seconds: float,
-    ) -> None:
-        try:
-            await asyncio.sleep(delay_seconds)
-            if self._closed:
-                return
-            await self._start_server_wakeword_detection_if_available()
-        except asyncio.CancelledError:
-            raise
-        finally:
-            if self._server_wakeword_restart_task is asyncio.current_task():
-                self._server_wakeword_restart_task = None
-
-    def _arm_trailing_pcm_drain(
-        self,
-        timeout_seconds: float = _TRAILING_PCM_DRAIN_SECONDS,
-    ) -> None:
-        loop = asyncio.get_running_loop()
-        self._drain_trailing_pcm_until_end = True
-        self._drain_trailing_pcm_deadline = loop.time() + timeout_seconds
-
-    def _clear_trailing_pcm_drain(self) -> None:
-        self._drain_trailing_pcm_until_end = False
-        self._drain_trailing_pcm_deadline = None
-
-    def _should_drain_trailing_pcm(self) -> bool:
-        if not self._drain_trailing_pcm_until_end:
-            return False
-        deadline = self._drain_trailing_pcm_deadline
-        if deadline is None:
-            return True
-        if asyncio.get_running_loop().time() <= deadline:
-            return True
-
-        logger.info(
-            "Trailing PCM drain window expired before END arrived; resuming normal routing"
-        )
-        self._clear_trailing_pcm_drain()
-        return False
 
     async def _wait_for_counter(
         self,
