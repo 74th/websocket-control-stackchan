@@ -14,7 +14,7 @@ const char *stateToString(StateMachine::State s)
 	case StateMachine::Speaking:
 		return "Speaking";
 	case StateMachine::ServerWwd:
-		return "ServerWwd";
+		return "Idle(Server-WWD)";
 	case StateMachine::Disconnected:
 		return "Disconnected";
 	default:
