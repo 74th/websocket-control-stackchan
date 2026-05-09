@@ -171,7 +171,7 @@ class WsProxy:
     async def wait_for_talk_session(self) -> None:
         while True:
             if self._wakeword_event.is_set():
-                await self.stop_server_wakeword_detection()
+                await self._stop_server_wakeword_detection()
                 self._wakeword_event.clear()
                 return
             if self._closed:
@@ -179,7 +179,7 @@ class WsProxy:
             await asyncio.sleep(0.05)
 
     async def listen(self) -> str:
-        await self.stop_server_wakeword_detection()
+        await self._stop_server_wakeword_detection()
         return await self._listener.listen(
             send_state_command=self.send_state_command,
             is_closed=lambda: self._closed,
@@ -246,7 +246,7 @@ class WsProxy:
     async def close(self) -> None:
         self._closed = True
         self._cancel_server_wakeword_restart_task()
-        await self.stop_server_wakeword_detection()
+        await self._stop_server_wakeword_detection()
         if self._receiving_task:
             self._receiving_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -262,9 +262,9 @@ class WsProxy:
 
     async def enable_auto_server_wakeword_detection(self) -> None:
         self._auto_start_server_wakeword = True
-        await self.start_server_wakeword_detection_if_available()
+        await self._start_server_wakeword_detection_if_available()
 
-    async def start_server_wakeword_detection_if_available(self) -> bool:
+    async def _start_server_wakeword_detection_if_available(self) -> bool:
         if (
             self._closed
             or self._server_wakeword_detector is None
@@ -283,7 +283,7 @@ class WsProxy:
         )
         return True
 
-    async def stop_server_wakeword_detection(self) -> None:
+    async def _stop_server_wakeword_detection(self) -> None:
         self._cancel_server_wakeword_restart_task()
         task = self._server_wakeword_task
         if task is None:
@@ -307,38 +307,6 @@ class WsProxy:
             pass
         except Exception:
             logger.exception("Server-side wake-word detection task failed")
-
-    async def request_server_wakeword_detection(
-        self,
-        *,
-        timeout_seconds: float | None = None,
-    ) -> bool:
-        if self._server_wakeword_detector is None or not self.server_metadata.has_server_wake_word:
-            raise WakeWordDetectionError(
-                "Server-side wake-word detection is not available for this connection"
-            )
-        if self._closed:
-            raise WebSocketDisconnect()
-
-        started = await self.start_server_wakeword_detection_if_available()
-        if not started:
-            raise WakeWordDetectionError(
-                "Server-side wake-word detection could not be started in the current state"
-            )
-
-        task = self._server_wakeword_task
-        if task is None:
-            raise WakeWordDetectionError("Server-side wake-word detection task is unavailable")
-
-        try:
-            if timeout_seconds is None:
-                return await asyncio.shield(task)
-            return await asyncio.wait_for(asyncio.shield(task), timeout=timeout_seconds)
-        except asyncio.TimeoutError as exc:
-            await self.stop_server_wakeword_detection()
-            raise WakeWordDetectionTimeout(
-                "Server-side wake-word detection timed out"
-            ) from exc
 
     async def _receive_loop(self) -> None:
         try:
@@ -534,7 +502,7 @@ class WsProxy:
             )
         )
         if self._auto_start_server_wakeword:
-            await self.start_server_wakeword_detection_if_available()
+            await self._start_server_wakeword_detection_if_available()
 
     def _build_server_metadata(
         self, firmware_metadata: FirmwareMetadata
@@ -680,7 +648,7 @@ class WsProxy:
             await asyncio.sleep(delay_seconds)
             if self._closed:
                 return
-            await self.start_server_wakeword_detection_if_available()
+            await self._start_server_wakeword_detection_if_available()
         except asyncio.CancelledError:
             raise
         finally:
