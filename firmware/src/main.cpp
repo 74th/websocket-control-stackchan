@@ -351,6 +351,11 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
   case WStype_DISCONNECTED:
     // M5.Display.println("WS: disconnected");
     log_i("WS disconnected");
+    if (listening.isWakeWordStreaming())
+    {
+      log_i("Stopping server-side wakeword uplink because WS disconnected");
+      listening.endWakeWordStreaming();
+    }
     resetServerMetadata();
     stateMachine.setState(StateMachine::Disconnected);
     break;
