@@ -26,7 +26,6 @@ class ServerWwdController:
         current_state: Callable[[], int],
         is_closed: Callable[[], bool],
         on_detected: Callable[[], None],
-        has_pending_wakeword: Callable[[], bool],
         server_wwd_state: int,
         idle_state: int,
     ) -> None:
@@ -36,7 +35,6 @@ class ServerWwdController:
         self._current_state = current_state
         self._is_closed = is_closed
         self._on_detected = on_detected
-        self._has_pending_wakeword = has_pending_wakeword
         self._server_wwd_state = server_wwd_state
         self._idle_state = idle_state
 
@@ -44,6 +42,7 @@ class ServerWwdController:
         self._task: Optional[asyncio.Task[bool]] = None
         self._restart_task: Optional[asyncio.Task[None]] = None
         self._auto_start = False
+        self._suppress_restart_once = False
         self._drain_trailing_pcm_until_end = False
         self._drain_trailing_pcm_deadline: float | None = None
 
@@ -76,11 +75,14 @@ class ServerWwdController:
         )
         return True
 
-    async def stop(self) -> None:
+    async def stop(self, *, suppress_restart: bool = True) -> None:
         self._cancel_restart_task()
         task = self._task
         if task is None:
             return
+
+        if suppress_restart and not task.done():
+            self._suppress_restart_once = True
 
         if task.done():
             self._task = None
@@ -213,10 +215,12 @@ class ServerWwdController:
                     logger.exception(
                         "Failed to return firmware to idle after wake-word detection"
                     )
+            suppress_restart = self._suppress_restart_once
+            self._suppress_restart_once = False
             should_restart = (
                 self._auto_start
                 and not detected
-                and not self._has_pending_wakeword()
+                and not suppress_restart
                 and not self._is_closed()
             )
             if self._task is asyncio.current_task():

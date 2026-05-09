@@ -142,7 +142,6 @@ class WsProxy:
             current_state=lambda: int(self._current_firmware_state),
             is_closed=lambda: self._closed,
             on_detected=self._wakeword_event.set,
-            has_pending_wakeword=self._wakeword_event.is_set,
             server_wwd_state=int(FirmwareState.SERVER_WWD),
             idle_state=int(FirmwareState.IDLE),
         )
