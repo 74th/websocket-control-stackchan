@@ -38,6 +38,12 @@ typedef enum _stackchan_websocket_v1_StackchanState {
     stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_SPEAKING = 3
 } stackchan_websocket_v1_StackchanState;
 
+typedef enum _stackchan_websocket_v1_ListeningPurpose {
+    stackchan_websocket_v1_ListeningPurpose_LISTENING_PURPOSE_UNSPECIFIED = 0,
+    stackchan_websocket_v1_ListeningPurpose_LISTENING_PURPOSE_SPEECH = 1,
+    stackchan_websocket_v1_ListeningPurpose_LISTENING_PURPOSE_WAKE_WORD = 2
+} stackchan_websocket_v1_ListeningPurpose;
+
 typedef enum _stackchan_websocket_v1_ServoOperation {
     stackchan_websocket_v1_ServoOperation_SERVO_OPERATION_SLEEP = 0,
     stackchan_websocket_v1_ServoOperation_SERVO_OPERATION_MOVE_X = 1,
@@ -83,6 +89,7 @@ typedef struct _stackchan_websocket_v1_AudioChunk {
 
 typedef struct _stackchan_websocket_v1_StateCommand {
     stackchan_websocket_v1_StackchanState state;
+    stackchan_websocket_v1_ListeningPurpose listening_purpose;
 } stackchan_websocket_v1_StateCommand;
 
 typedef struct _stackchan_websocket_v1_WakeWordEvent {
@@ -176,6 +183,10 @@ extern "C" {
 #define _stackchan_websocket_v1_StackchanState_MAX stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_SPEAKING
 #define _stackchan_websocket_v1_StackchanState_ARRAYSIZE ((stackchan_websocket_v1_StackchanState)(stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_SPEAKING+1))
 
+#define _stackchan_websocket_v1_ListeningPurpose_MIN stackchan_websocket_v1_ListeningPurpose_LISTENING_PURPOSE_UNSPECIFIED
+#define _stackchan_websocket_v1_ListeningPurpose_MAX stackchan_websocket_v1_ListeningPurpose_LISTENING_PURPOSE_WAKE_WORD
+#define _stackchan_websocket_v1_ListeningPurpose_ARRAYSIZE ((stackchan_websocket_v1_ListeningPurpose)(stackchan_websocket_v1_ListeningPurpose_LISTENING_PURPOSE_WAKE_WORD+1))
+
 #define _stackchan_websocket_v1_ServoOperation_MIN stackchan_websocket_v1_ServoOperation_SERVO_OPERATION_SLEEP
 #define _stackchan_websocket_v1_ServoOperation_MAX stackchan_websocket_v1_ServoOperation_SERVO_OPERATION_MOVE_Y
 #define _stackchan_websocket_v1_ServoOperation_ARRAYSIZE ((stackchan_websocket_v1_ServoOperation)(stackchan_websocket_v1_ServoOperation_SERVO_OPERATION_MOVE_Y+1))
@@ -197,6 +208,7 @@ extern "C" {
 
 
 #define stackchan_websocket_v1_StateCommand_state_ENUMTYPE stackchan_websocket_v1_StackchanState
+#define stackchan_websocket_v1_StateCommand_listening_purpose_ENUMTYPE stackchan_websocket_v1_ListeningPurpose
 
 
 #define stackchan_websocket_v1_StateEvent_state_ENUMTYPE stackchan_websocket_v1_StackchanState
@@ -218,7 +230,7 @@ extern "C" {
 #define stackchan_websocket_v1_AudioWavStart_init_default {0, 0}
 #define stackchan_websocket_v1_AudioWavEnd_init_default {0}
 #define stackchan_websocket_v1_AudioChunk_init_default {{0, {0}}}
-#define stackchan_websocket_v1_StateCommand_init_default {_stackchan_websocket_v1_StackchanState_MIN}
+#define stackchan_websocket_v1_StateCommand_init_default {_stackchan_websocket_v1_StackchanState_MIN, _stackchan_websocket_v1_ListeningPurpose_MIN}
 #define stackchan_websocket_v1_WakeWordEvent_init_default {0}
 #define stackchan_websocket_v1_StateEvent_init_default {_stackchan_websocket_v1_StackchanState_MIN}
 #define stackchan_websocket_v1_SpeakDoneEvent_init_default {0}
@@ -233,7 +245,7 @@ extern "C" {
 #define stackchan_websocket_v1_AudioWavStart_init_zero {0, 0}
 #define stackchan_websocket_v1_AudioWavEnd_init_zero {0}
 #define stackchan_websocket_v1_AudioChunk_init_zero {{0, {0}}}
-#define stackchan_websocket_v1_StateCommand_init_zero {_stackchan_websocket_v1_StackchanState_MIN}
+#define stackchan_websocket_v1_StateCommand_init_zero {_stackchan_websocket_v1_StackchanState_MIN, _stackchan_websocket_v1_ListeningPurpose_MIN}
 #define stackchan_websocket_v1_WakeWordEvent_init_zero {0}
 #define stackchan_websocket_v1_StateEvent_init_zero {_stackchan_websocket_v1_StackchanState_MIN}
 #define stackchan_websocket_v1_SpeakDoneEvent_init_zero {0}
@@ -248,6 +260,7 @@ extern "C" {
 #define stackchan_websocket_v1_AudioWavStart_channels_tag 2
 #define stackchan_websocket_v1_AudioChunk_pcm_bytes_tag 1
 #define stackchan_websocket_v1_StateCommand_state_tag 1
+#define stackchan_websocket_v1_StateCommand_listening_purpose_tag 2
 #define stackchan_websocket_v1_WakeWordEvent_detected_tag 1
 #define stackchan_websocket_v1_StateEvent_state_tag 1
 #define stackchan_websocket_v1_SpeakDoneEvent_done_tag 1
@@ -347,7 +360,8 @@ X(a, STATIC,   SINGULAR, BYTES,    pcm_bytes,         1)
 #define stackchan_websocket_v1_AudioChunk_DEFAULT NULL
 
 #define stackchan_websocket_v1_StateCommand_FIELDLIST(X, a) \
-X(a, STATIC,   SINGULAR, UENUM,    state,             1)
+X(a, STATIC,   SINGULAR, UENUM,    state,             1) \
+X(a, STATIC,   SINGULAR, UENUM,    listening_purpose,   2)
 #define stackchan_websocket_v1_StateCommand_CALLBACK NULL
 #define stackchan_websocket_v1_StateCommand_DEFAULT NULL
 
@@ -448,7 +462,7 @@ extern const pb_msgdesc_t stackchan_websocket_v1_ServerMetadata_msg;
 #define stackchan_websocket_v1_ServoCommand_size 14
 #define stackchan_websocket_v1_ServoDoneEvent_size 2
 #define stackchan_websocket_v1_SpeakDoneEvent_size 2
-#define stackchan_websocket_v1_StateCommand_size 2
+#define stackchan_websocket_v1_StateCommand_size 4
 #define stackchan_websocket_v1_StateEvent_size   2
 #define stackchan_websocket_v1_WakeWordEvent_size 2
 #define stackchan_websocket_v1_WebSocketMessage_size 4113

@@ -24,25 +24,27 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17websocket-message.proto\x12\x16stackchan.websocket.v1\"\x96\x08\n\x10WebSocketMessage\x12\x31\n\x04kind\x18\x01 \x01(\x0e\x32#.stackchan.websocket.v1.MessageKind\x12\x39\n\x0cmessage_type\x18\x02 \x01(\x0e\x32#.stackchan.websocket.v1.MessageType\x12\x0b\n\x03seq\x18\x03 \x01(\r\x12@\n\x0f\x61udio_pcm_start\x18\n \x01(\x0b\x32%.stackchan.websocket.v1.AudioPcmStartH\x00\x12<\n\x0e\x61udio_pcm_data\x18\x0b \x01(\x0b\x32\".stackchan.websocket.v1.AudioChunkH\x00\x12<\n\raudio_pcm_end\x18\x0c \x01(\x0b\x32#.stackchan.websocket.v1.AudioPcmEndH\x00\x12@\n\x0f\x61udio_wav_start\x18\x14 \x01(\x0b\x32%.stackchan.websocket.v1.AudioWavStartH\x00\x12<\n\x0e\x61udio_wav_data\x18\x15 \x01(\x0b\x32\".stackchan.websocket.v1.AudioChunkH\x00\x12<\n\raudio_wav_end\x18\x16 \x01(\x0b\x32#.stackchan.websocket.v1.AudioWavEndH\x00\x12\x39\n\tstate_cmd\x18\x1e \x01(\x0b\x32$.stackchan.websocket.v1.StateCommandH\x00\x12>\n\rwake_word_evt\x18\x1f \x01(\x0b\x32%.stackchan.websocket.v1.WakeWordEventH\x00\x12\x37\n\tstate_evt\x18  \x01(\x0b\x32\".stackchan.websocket.v1.StateEventH\x00\x12@\n\x0espeak_done_evt\x18! \x01(\x0b\x32&.stackchan.websocket.v1.SpeakDoneEventH\x00\x12\x41\n\tservo_cmd\x18\" \x01(\x0b\x32,.stackchan.websocket.v1.ServoCommandSequenceH\x00\x12@\n\x0eservo_done_evt\x18# \x01(\x0b\x32&.stackchan.websocket.v1.ServoDoneEventH\x00\x12\x45\n\x11\x66irmware_metadata\x18$ \x01(\x0b\x32(.stackchan.websocket.v1.FirmwareMetadataH\x00\x12\x41\n\x0fserver_metadata\x18% \x01(\x0b\x32&.stackchan.websocket.v1.ServerMetadataH\x00\x42\x06\n\x04\x62ody\"\x0f\n\rAudioPcmStart\"\r\n\x0b\x41udioPcmEnd\"6\n\rAudioWavStart\x12\x13\n\x0bsample_rate\x18\x01 \x01(\r\x12\x10\n\x08\x63hannels\x18\x02 \x01(\r\"\r\n\x0b\x41udioWavEnd\"\x1f\n\nAudioChunk\x12\x11\n\tpcm_bytes\x18\x01 \x01(\x0c\"E\n\x0cStateCommand\x12\x35\n\x05state\x18\x01 \x01(\x0e\x32&.stackchan.websocket.v1.StackchanState\"!\n\rWakeWordEvent\x12\x10\n\x08\x64\x65tected\x18\x01 \x01(\x08\"C\n\nStateEvent\x12\x35\n\x05state\x18\x01 \x01(\x0e\x32&.stackchan.websocket.v1.StackchanState\"\x1e\n\x0eSpeakDoneEvent\x12\x0c\n\x04\x64one\x18\x01 \x01(\x08\"N\n\x14ServoCommandSequence\x12\x36\n\x08\x63ommands\x18\x01 \x03(\x0b\x32$.stackchan.websocket.v1.ServoCommand\"f\n\x0cServoCommand\x12\x32\n\x02op\x18\x01 \x01(\x0e\x32&.stackchan.websocket.v1.ServoOperation\x12\r\n\x05\x61ngle\x18\x02 \x01(\x11\x12\x13\n\x0b\x64uration_ms\x18\x03 \x01(\x11\"\x1e\n\x0eServoDoneEvent\x12\x0c\n\x04\x64one\x18\x01 \x01(\x08\"\x99\x02\n\x10\x46irmwareMetadata\x12\x37\n\x0b\x64\x65vice_type\x18\x01 \x01(\x0e\x32\".stackchan.websocket.v1.DeviceType\x12\x15\n\rdisplay_width\x18\x02 \x01(\r\x12\x16\n\x0e\x64isplay_height\x18\x03 \x01(\r\x12\x1c\n\x14has_device_wake_word\x18\x04 \x01(\x08\x12\x0f\n\x07has_led\x18\x05 \x01(\x08\x12\x35\n\nservo_type\x18\x06 \x01(\x0e\x32!.stackchan.websocket.v1.ServoType\x12\x1d\n\x15supports_audio_duplex\x18\x07 \x01(\x08\x12\x18\n\x10\x66irmware_version\x18\x08 \x01(\t\"F\n\x0eServerMetadata\x12\x1c\n\x14has_server_wake_word\x18\x01 \x01(\x08\x12\x16\n\x0eserver_version\x18\x02 \x01(\t*\xdf\x02\n\x0bMessageKind\x12\x1c\n\x18MESSAGE_KIND_UNSPECIFIED\x10\x00\x12\x1a\n\x16MESSAGE_KIND_AUDIO_PCM\x10\x01\x12\x1a\n\x16MESSAGE_KIND_AUDIO_WAV\x10\x02\x12\x1a\n\x16MESSAGE_KIND_STATE_CMD\x10\x03\x12\x1e\n\x1aMESSAGE_KIND_WAKE_WORD_EVT\x10\x04\x12\x1a\n\x16MESSAGE_KIND_STATE_EVT\x10\x05\x12\x1f\n\x1bMESSAGE_KIND_SPEAK_DONE_EVT\x10\x06\x12\x1a\n\x16MESSAGE_KIND_SERVO_CMD\x10\x07\x12\x1f\n\x1bMESSAGE_KIND_SERVO_DONE_EVT\x10\x08\x12\"\n\x1eMESSAGE_KIND_FIRMWARE_METADATA\x10\t\x12 \n\x1cMESSAGE_KIND_SERVER_METADATA\x10\n*p\n\x0bMessageType\x12\x1c\n\x18MESSAGE_TYPE_UNSPECIFIED\x10\x00\x12\x16\n\x12MESSAGE_TYPE_START\x10\x01\x12\x15\n\x11MESSAGE_TYPE_DATA\x10\x02\x12\x14\n\x10MESSAGE_TYPE_END\x10\x03*\x85\x01\n\x0eStackchanState\x12\x18\n\x14STACKCHAN_STATE_IDLE\x10\x00\x12\x1d\n\x19STACKCHAN_STATE_LISTENING\x10\x01\x12\x1c\n\x18STACKCHAN_STATE_THINKING\x10\x02\x12\x1c\n\x18STACKCHAN_STATE_SPEAKING\x10\x03*c\n\x0eServoOperation\x12\x19\n\x15SERVO_OPERATION_SLEEP\x10\x00\x12\x1a\n\x16SERVO_OPERATION_MOVE_X\x10\x01\x12\x1a\n\x16SERVO_OPERATION_MOVE_Y\x10\x02*\x85\x01\n\nDeviceType\x12\x1b\n\x17\x44\x45VICE_TYPE_UNSPECIFIED\x10\x00\x12\x1e\n\x1a\x44\x45VICE_TYPE_M5STACK_CORES3\x10\x01\x12\x1a\n\x16\x44\x45VICE_TYPE_M5ATOM_S3R\x10\x02\x12\x1e\n\x1a\x44\x45VICE_TYPE_M5ATOM_ECHOS3R\x10\x03*i\n\tServoType\x12\x1a\n\x16SERVO_TYPE_UNSPECIFIED\x10\x00\x12\x13\n\x0fSERVO_TYPE_NONE\x10\x01\x12\x13\n\x0fSERVO_TYPE_SG90\x10\x02\x12\x16\n\x12SERVO_TYPE_SCS0009\x10\x03\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17websocket-message.proto\x12\x16stackchan.websocket.v1\"\x96\x08\n\x10WebSocketMessage\x12\x31\n\x04kind\x18\x01 \x01(\x0e\x32#.stackchan.websocket.v1.MessageKind\x12\x39\n\x0cmessage_type\x18\x02 \x01(\x0e\x32#.stackchan.websocket.v1.MessageType\x12\x0b\n\x03seq\x18\x03 \x01(\r\x12@\n\x0f\x61udio_pcm_start\x18\n \x01(\x0b\x32%.stackchan.websocket.v1.AudioPcmStartH\x00\x12<\n\x0e\x61udio_pcm_data\x18\x0b \x01(\x0b\x32\".stackchan.websocket.v1.AudioChunkH\x00\x12<\n\raudio_pcm_end\x18\x0c \x01(\x0b\x32#.stackchan.websocket.v1.AudioPcmEndH\x00\x12@\n\x0f\x61udio_wav_start\x18\x14 \x01(\x0b\x32%.stackchan.websocket.v1.AudioWavStartH\x00\x12<\n\x0e\x61udio_wav_data\x18\x15 \x01(\x0b\x32\".stackchan.websocket.v1.AudioChunkH\x00\x12<\n\raudio_wav_end\x18\x16 \x01(\x0b\x32#.stackchan.websocket.v1.AudioWavEndH\x00\x12\x39\n\tstate_cmd\x18\x1e \x01(\x0b\x32$.stackchan.websocket.v1.StateCommandH\x00\x12>\n\rwake_word_evt\x18\x1f \x01(\x0b\x32%.stackchan.websocket.v1.WakeWordEventH\x00\x12\x37\n\tstate_evt\x18  \x01(\x0b\x32\".stackchan.websocket.v1.StateEventH\x00\x12@\n\x0espeak_done_evt\x18! \x01(\x0b\x32&.stackchan.websocket.v1.SpeakDoneEventH\x00\x12\x41\n\tservo_cmd\x18\" \x01(\x0b\x32,.stackchan.websocket.v1.ServoCommandSequenceH\x00\x12@\n\x0eservo_done_evt\x18# \x01(\x0b\x32&.stackchan.websocket.v1.ServoDoneEventH\x00\x12\x45\n\x11\x66irmware_metadata\x18$ \x01(\x0b\x32(.stackchan.websocket.v1.FirmwareMetadataH\x00\x12\x41\n\x0fserver_metadata\x18% \x01(\x0b\x32&.stackchan.websocket.v1.ServerMetadataH\x00\x42\x06\n\x04\x62ody\"\x0f\n\rAudioPcmStart\"\r\n\x0b\x41udioPcmEnd\"6\n\rAudioWavStart\x12\x13\n\x0bsample_rate\x18\x01 \x01(\r\x12\x10\n\x08\x63hannels\x18\x02 \x01(\r\"\r\n\x0b\x41udioWavEnd\"\x1f\n\nAudioChunk\x12\x11\n\tpcm_bytes\x18\x01 \x01(\x0c\"\x8a\x01\n\x0cStateCommand\x12\x35\n\x05state\x18\x01 \x01(\x0e\x32&.stackchan.websocket.v1.StackchanState\x12\x43\n\x11listening_purpose\x18\x02 \x01(\x0e\x32(.stackchan.websocket.v1.ListeningPurpose\"!\n\rWakeWordEvent\x12\x10\n\x08\x64\x65tected\x18\x01 \x01(\x08\"C\n\nStateEvent\x12\x35\n\x05state\x18\x01 \x01(\x0e\x32&.stackchan.websocket.v1.StackchanState\"\x1e\n\x0eSpeakDoneEvent\x12\x0c\n\x04\x64one\x18\x01 \x01(\x08\"N\n\x14ServoCommandSequence\x12\x36\n\x08\x63ommands\x18\x01 \x03(\x0b\x32$.stackchan.websocket.v1.ServoCommand\"f\n\x0cServoCommand\x12\x32\n\x02op\x18\x01 \x01(\x0e\x32&.stackchan.websocket.v1.ServoOperation\x12\r\n\x05\x61ngle\x18\x02 \x01(\x11\x12\x13\n\x0b\x64uration_ms\x18\x03 \x01(\x11\"\x1e\n\x0eServoDoneEvent\x12\x0c\n\x04\x64one\x18\x01 \x01(\x08\"\x99\x02\n\x10\x46irmwareMetadata\x12\x37\n\x0b\x64\x65vice_type\x18\x01 \x01(\x0e\x32\".stackchan.websocket.v1.DeviceType\x12\x15\n\rdisplay_width\x18\x02 \x01(\r\x12\x16\n\x0e\x64isplay_height\x18\x03 \x01(\r\x12\x1c\n\x14has_device_wake_word\x18\x04 \x01(\x08\x12\x0f\n\x07has_led\x18\x05 \x01(\x08\x12\x35\n\nservo_type\x18\x06 \x01(\x0e\x32!.stackchan.websocket.v1.ServoType\x12\x1d\n\x15supports_audio_duplex\x18\x07 \x01(\x08\x12\x18\n\x10\x66irmware_version\x18\x08 \x01(\t\"F\n\x0eServerMetadata\x12\x1c\n\x14has_server_wake_word\x18\x01 \x01(\x08\x12\x16\n\x0eserver_version\x18\x02 \x01(\t*\xdf\x02\n\x0bMessageKind\x12\x1c\n\x18MESSAGE_KIND_UNSPECIFIED\x10\x00\x12\x1a\n\x16MESSAGE_KIND_AUDIO_PCM\x10\x01\x12\x1a\n\x16MESSAGE_KIND_AUDIO_WAV\x10\x02\x12\x1a\n\x16MESSAGE_KIND_STATE_CMD\x10\x03\x12\x1e\n\x1aMESSAGE_KIND_WAKE_WORD_EVT\x10\x04\x12\x1a\n\x16MESSAGE_KIND_STATE_EVT\x10\x05\x12\x1f\n\x1bMESSAGE_KIND_SPEAK_DONE_EVT\x10\x06\x12\x1a\n\x16MESSAGE_KIND_SERVO_CMD\x10\x07\x12\x1f\n\x1bMESSAGE_KIND_SERVO_DONE_EVT\x10\x08\x12\"\n\x1eMESSAGE_KIND_FIRMWARE_METADATA\x10\t\x12 \n\x1cMESSAGE_KIND_SERVER_METADATA\x10\n*p\n\x0bMessageType\x12\x1c\n\x18MESSAGE_TYPE_UNSPECIFIED\x10\x00\x12\x16\n\x12MESSAGE_TYPE_START\x10\x01\x12\x15\n\x11MESSAGE_TYPE_DATA\x10\x02\x12\x14\n\x10MESSAGE_TYPE_END\x10\x03*\x85\x01\n\x0eStackchanState\x12\x18\n\x14STACKCHAN_STATE_IDLE\x10\x00\x12\x1d\n\x19STACKCHAN_STATE_LISTENING\x10\x01\x12\x1c\n\x18STACKCHAN_STATE_THINKING\x10\x02\x12\x1c\n\x18STACKCHAN_STATE_SPEAKING\x10\x03*t\n\x10ListeningPurpose\x12!\n\x1dLISTENING_PURPOSE_UNSPECIFIED\x10\x00\x12\x1c\n\x18LISTENING_PURPOSE_SPEECH\x10\x01\x12\x1f\n\x1bLISTENING_PURPOSE_WAKE_WORD\x10\x02*c\n\x0eServoOperation\x12\x19\n\x15SERVO_OPERATION_SLEEP\x10\x00\x12\x1a\n\x16SERVO_OPERATION_MOVE_X\x10\x01\x12\x1a\n\x16SERVO_OPERATION_MOVE_Y\x10\x02*\x85\x01\n\nDeviceType\x12\x1b\n\x17\x44\x45VICE_TYPE_UNSPECIFIED\x10\x00\x12\x1e\n\x1a\x44\x45VICE_TYPE_M5STACK_CORES3\x10\x01\x12\x1a\n\x16\x44\x45VICE_TYPE_M5ATOM_S3R\x10\x02\x12\x1e\n\x1a\x44\x45VICE_TYPE_M5ATOM_ECHOS3R\x10\x03*i\n\tServoType\x12\x1a\n\x16SERVO_TYPE_UNSPECIFIED\x10\x00\x12\x13\n\x0fSERVO_TYPE_NONE\x10\x01\x12\x13\n\x0fSERVO_TYPE_SG90\x10\x02\x12\x16\n\x12SERVO_TYPE_SCS0009\x10\x03\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'websocket_message_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_MESSAGEKIND']._serialized_start=2016
-  _globals['_MESSAGEKIND']._serialized_end=2367
-  _globals['_MESSAGETYPE']._serialized_start=2369
-  _globals['_MESSAGETYPE']._serialized_end=2481
-  _globals['_STACKCHANSTATE']._serialized_start=2484
-  _globals['_STACKCHANSTATE']._serialized_end=2617
-  _globals['_SERVOOPERATION']._serialized_start=2619
-  _globals['_SERVOOPERATION']._serialized_end=2718
-  _globals['_DEVICETYPE']._serialized_start=2721
-  _globals['_DEVICETYPE']._serialized_end=2854
-  _globals['_SERVOTYPE']._serialized_start=2856
-  _globals['_SERVOTYPE']._serialized_end=2961
+  _globals['_MESSAGEKIND']._serialized_start=2086
+  _globals['_MESSAGEKIND']._serialized_end=2437
+  _globals['_MESSAGETYPE']._serialized_start=2439
+  _globals['_MESSAGETYPE']._serialized_end=2551
+  _globals['_STACKCHANSTATE']._serialized_start=2554
+  _globals['_STACKCHANSTATE']._serialized_end=2687
+  _globals['_LISTENINGPURPOSE']._serialized_start=2689
+  _globals['_LISTENINGPURPOSE']._serialized_end=2805
+  _globals['_SERVOOPERATION']._serialized_start=2807
+  _globals['_SERVOOPERATION']._serialized_end=2906
+  _globals['_DEVICETYPE']._serialized_start=2909
+  _globals['_DEVICETYPE']._serialized_end=3042
+  _globals['_SERVOTYPE']._serialized_start=3044
+  _globals['_SERVOTYPE']._serialized_end=3149
   _globals['_WEBSOCKETMESSAGE']._serialized_start=52
   _globals['_WEBSOCKETMESSAGE']._serialized_end=1098
   _globals['_AUDIOPCMSTART']._serialized_start=1100
@@ -55,22 +57,22 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_AUDIOWAVEND']._serialized_end=1201
   _globals['_AUDIOCHUNK']._serialized_start=1203
   _globals['_AUDIOCHUNK']._serialized_end=1234
-  _globals['_STATECOMMAND']._serialized_start=1236
-  _globals['_STATECOMMAND']._serialized_end=1305
-  _globals['_WAKEWORDEVENT']._serialized_start=1307
-  _globals['_WAKEWORDEVENT']._serialized_end=1340
-  _globals['_STATEEVENT']._serialized_start=1342
-  _globals['_STATEEVENT']._serialized_end=1409
-  _globals['_SPEAKDONEEVENT']._serialized_start=1411
-  _globals['_SPEAKDONEEVENT']._serialized_end=1441
-  _globals['_SERVOCOMMANDSEQUENCE']._serialized_start=1443
-  _globals['_SERVOCOMMANDSEQUENCE']._serialized_end=1521
-  _globals['_SERVOCOMMAND']._serialized_start=1523
-  _globals['_SERVOCOMMAND']._serialized_end=1625
-  _globals['_SERVODONEEVENT']._serialized_start=1627
-  _globals['_SERVODONEEVENT']._serialized_end=1657
-  _globals['_FIRMWAREMETADATA']._serialized_start=1660
-  _globals['_FIRMWAREMETADATA']._serialized_end=1941
-  _globals['_SERVERMETADATA']._serialized_start=1943
-  _globals['_SERVERMETADATA']._serialized_end=2013
+  _globals['_STATECOMMAND']._serialized_start=1237
+  _globals['_STATECOMMAND']._serialized_end=1375
+  _globals['_WAKEWORDEVENT']._serialized_start=1377
+  _globals['_WAKEWORDEVENT']._serialized_end=1410
+  _globals['_STATEEVENT']._serialized_start=1412
+  _globals['_STATEEVENT']._serialized_end=1479
+  _globals['_SPEAKDONEEVENT']._serialized_start=1481
+  _globals['_SPEAKDONEEVENT']._serialized_end=1511
+  _globals['_SERVOCOMMANDSEQUENCE']._serialized_start=1513
+  _globals['_SERVOCOMMANDSEQUENCE']._serialized_end=1591
+  _globals['_SERVOCOMMAND']._serialized_start=1593
+  _globals['_SERVOCOMMAND']._serialized_end=1695
+  _globals['_SERVODONEEVENT']._serialized_start=1697
+  _globals['_SERVODONEEVENT']._serialized_end=1727
+  _globals['_FIRMWAREMETADATA']._serialized_start=1730
+  _globals['_FIRMWAREMETADATA']._serialized_end=2011
+  _globals['_SERVERMETADATA']._serialized_start=2013
+  _globals['_SERVERMETADATA']._serialized_end=2083
 # @@protoc_insertion_point(module_scope)

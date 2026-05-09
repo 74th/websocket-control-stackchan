@@ -10,6 +10,12 @@
 class Listening
 {
 public:
+  enum class SessionMode
+  {
+    Speech,
+    WakeWord,
+  };
+
   Listening(WebSocketsClient &ws, StateMachine &sm, int sampleRate);
 
   // allocate buffers / reset counters; call once from setup
@@ -18,6 +24,10 @@ public:
   // Listening ステートに入る/出る際の処理
   void begin();
   void end();
+
+  // Idle(Server-WWD) のままマイク uplink を開始/終了する
+  bool beginWakeWordStreaming();
+  void endWakeWordStreaming();
 
   // begin a new streaming session (sends START); returns false if WS not connected
   bool startStreaming();
@@ -34,7 +44,11 @@ public:
   // 無音が所定時間続いているか判定
   bool shouldStopForSilence() const;
 
+  bool isWakeWordStreaming() const { return streaming_ && session_mode_ == SessionMode::WakeWord; }
+
 private:
+  bool beginStreamingSession(SessionMode mode, bool auto_stop_for_silence);
+  void stopMicrophoneOnly();
   void updateLevelStats(const int16_t *samples, size_t sampleCount);
   bool sendPacket(stackchan_websocket_v1_MessageType type, const int16_t *samples, size_t sampleCount);
   void ringPush(const int16_t *src, size_t samples);
@@ -56,6 +70,8 @@ private:
   uint32_t seq_counter_ = 0;
   bool streaming_ = false;
   bool events_registered_ = false;
+  SessionMode session_mode_ = SessionMode::Speech;
+  bool auto_stop_for_silence_ = true;
 
   // 無音判定関連
   int32_t last_level_ = 0;

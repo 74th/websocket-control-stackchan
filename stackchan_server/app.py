@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from .speech_recognition import create_speech_recognizer
 from .speech_synthesis import create_speech_synthesizer
 from .types import SpeechRecognizer, SpeechSynthesizer
+from .wakeup_word_detection import WakeWordDetectionError
 from .ws_proxy import WsProxy
 
 logger = getLogger(__name__)
@@ -22,6 +23,10 @@ class StackChanInfo(BaseModel):
 
 class SpeakRequest(BaseModel):
     text: str
+
+
+class ServerWakeWordDetectResponse(BaseModel):
+    detected: bool
 
 
 class StackChanApp:
@@ -64,6 +69,25 @@ class StackChanApp:
                 raise HTTPException(status_code=404, detail="stackchan not connected")
             proxy.trigger_wakeword()
 
+        @self.fastapi.post(
+            "/v1/stackchan/{stackchan_ip}/wakeword/server-detect",
+            response_model=ServerWakeWordDetectResponse,
+        )
+        async def _detect_server_wakeword(
+            stackchan_ip: str,
+            timeout_seconds: float | None = None,
+        ):
+            proxy = await self._get_proxy(stackchan_ip)
+            if proxy is None:
+                raise HTTPException(status_code=404, detail="stackchan not connected")
+            try:
+                detected = await proxy.request_server_wakeword_detection(
+                    timeout_seconds=timeout_seconds
+                )
+            except WakeWordDetectionError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            return ServerWakeWordDetectResponse(detected=detected)
+
         @self.fastapi.post("/v1/stackchan/{stackchan_ip}/speak", status_code=204)
         async def _speak(stackchan_ip: str, body: SpeakRequest):
             proxy = await self._get_proxy(stackchan_ip)
@@ -98,6 +122,8 @@ class StackChanApp:
         try:
             if self._setup_fn:
                 await self._setup_fn(proxy)
+
+            await proxy.enable_auto_server_wakeword_detection()
 
             while not proxy.closed:
                 if not self._talk_session_fn:

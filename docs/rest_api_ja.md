@@ -17,6 +17,7 @@
 | `GET` | `/v1/stackchan` | 接続中 StackChan 一覧 |
 | `GET` | `/v1/stackchan/{stackchan_ip}` | 指定 StackChan の状態取得 |
 | `POST` | `/v1/stackchan/{stackchan_ip}/wakeword` | 擬似 wakeword 発火 |
+| `POST` | `/v1/stackchan/{stackchan_ip}/wakeword/server-detect` | サーバーサイド wakeword 検出を要求 |
 | `POST` | `/v1/stackchan/{stackchan_ip}/speak` | 指定 StackChan に発話させる |
 
 ## `GET /health`
@@ -133,6 +134,63 @@
 
 - 実機側のウェイクワード検出 (`WakeWordEvt`) と同じように扱われます。
 - すでに `talk_session` 実行中でも、イベント自体は内部フラグとして立ちます。
+
+## `POST /v1/stackchan/{stackchan_ip}/wakeword/server-detect`
+
+サーバーサイドの wakeword 検出を開始します。
+
+> [!NOTE]
+> 環境変数 `USE_SERVER_SIDE_WWD_WHISPER_SERVER=1` の場合、サーバーは `@app.setup()` 完了後と `Idle` 復帰後に自動でサーバーサイド wakeword 検出を開始します。この API は明示的に現在の検出サイクルを待ちたい場合に利用できます。
+
+- サーバーは対象 StackChan に `StateCmd(Listening, WAKE_WORD)` を送ってマイク音声を受信し、
+  直近 3 秒窓を 0.5 秒ごとに認識します。
+- 認識テキストには全結果がログ出力されます。
+- キーワードが検出されたら内部 wakeword イベントを発火し、`talk_session` 開始待ちを解除します。
+- 検出の終了時には `StateCmd(Idle)` を送って待機に戻します。
+- 実機の表示状態は `Listening` へは変わらず、`Idle(Server-WWD)` のまま待ち受けます。
+- このモードでは無音 3 秒によるクライアント側自動終了は行いません。
+
+### パスパラメータ
+
+| 名前 | 型 | 説明 |
+| --- | --- | --- |
+| `stackchan_ip` | `string` | 対象 StackChan の接続元 IP |
+
+### クエリパラメータ
+
+| 名前 | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `timeout_seconds` | `number` | 任意 | 検出待ちタイムアウト秒。未指定時はサーバー設定値 |
+
+### 成功レスポンス
+
+- Status: `200 OK`
+
+```json
+{
+  "detected": true
+}
+```
+
+`detected` が `false` の場合は、検出セッションは終了したがキーワード未検出です。
+
+### エラーレスポンス
+
+- Status: `404 Not Found`
+
+```json
+{
+  "detail": "stackchan not connected"
+}
+```
+
+- Status: `409 Conflict`
+
+```json
+{
+  "detail": "Server-side wake-word detection is not available for this connection"
+}
+```
 
 ## `POST /v1/stackchan/{stackchan_ip}/speak`
 

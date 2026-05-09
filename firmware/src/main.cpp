@@ -238,15 +238,43 @@ bool applyRemoteStateCommand(const stackchan_websocket_v1_StateCommand &command)
   switch (command.state)
   {
   case stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_IDLE:
+    if (listening.isWakeWordStreaming())
+    {
+      listening.endWakeWordStreaming();
+    }
     stateMachine.setState(StateMachine::Idle);
     return true;
   case stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_LISTENING:
+    if (command.listening_purpose == stackchan_websocket_v1_ListeningPurpose_LISTENING_PURPOSE_WAKE_WORD &&
+        shouldUseServerWakeWord() &&
+        stateMachine.getState() == StateMachine::Idle)
+    {
+      if (!listening.beginWakeWordStreaming())
+      {
+        log_w("Failed to start server-side wakeword streaming");
+        return false;
+      }
+      return true;
+    }
+
+    if (listening.isWakeWordStreaming())
+    {
+      listening.endWakeWordStreaming();
+    }
     stateMachine.setState(StateMachine::Listening);
     return true;
   case stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_THINKING:
+    if (listening.isWakeWordStreaming())
+    {
+      listening.endWakeWordStreaming();
+    }
     stateMachine.setState(StateMachine::Thinking);
     return true;
   case stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_SPEAKING:
+    if (listening.isWakeWordStreaming())
+    {
+      listening.endWakeWordStreaming();
+    }
     stateMachine.setState(StateMachine::Speaking);
     return true;
   default:
@@ -542,7 +570,11 @@ void loop()
   {
   case StateMachine::Idle:
     handleTouchWakeWordInput();
-    if (shouldUseDeviceWakeWord())
+    if (listening.isWakeWordStreaming())
+    {
+      listening.loop();
+    }
+    else if (shouldUseDeviceWakeWord())
     {
       wakeUpWord.loop();
     }

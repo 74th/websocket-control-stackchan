@@ -4,6 +4,7 @@
 
 #include "config.h"
 #include "display.hpp"
+#include "metadata.hpp"
 
 #if USE_STACKCHAN_BSP
 #define GFXModule M5StackChan.Display()
@@ -137,6 +138,11 @@ void Display::drawForState(StateMachine::State state)
   GFXModule.setTextSize(1);
   GFXModule.setTextColor(font_color, bg_color);
   GFXModule.setCursor(isAtomS3R() ? 4 : 10, bar_y + (isAtomS3R() ? 6 : 2));
+  if (state == StateMachine::Idle && shouldUseServerWakeWord())
+  {
+    GFXModule.printf("Idle(Server-WWD)");
+    return;
+  }
   GFXModule.printf("%s", stateToString(state));
 }
 

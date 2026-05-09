@@ -35,6 +35,8 @@
 | `SpeakDoneEvt` | CoreS3 → Server | 音声再生完了通知 |
 | `ServoCmd` | Server → CoreS3 | サーボ動作シーケンス指示 |
 | `ServoDoneEvt` | CoreS3 → Server | サーボ動作完了通知 |
+| `FirmwareMetadata` | CoreS3 → Server | クライアント能力通知 |
+| `ServerMetadata` | Server → CoreS3 | サーバー能力通知 |
 
 ### `MessageType` 一覧
 
@@ -89,7 +91,7 @@
 
 - 方向: Server → CoreS3
 - `messageType`: `DATA` のみ
-- body: `StateCommand { state }`
+- body: `StateCommand { state, listening_purpose }`
 
 利用する状態名:
 
@@ -98,11 +100,20 @@
 - `Thinking`
 - `Speaking`
 
+`listening_purpose` の値:
+
+- `SPEECH`: 通常の会話入力
+- `WAKE_WORD`: サーバーサイド wakeword 検出用の uplink
+
 ### 現行実装メモ
 
-- `proxy.listen()` 開始時に Server が `Listening` を指示します。
+- `proxy.listen()` 開始時に Server が `StateCmd(Listening, SPEECH)` を指示します。
+- サーバーサイド wakeword 検出開始時は `StateCmd(Listening, WAKE_WORD)` を指示します。
 - 音声 uplink の `END` を受けると、Server は `Thinking` を指示します。
 - `proxy.speak()` 完了後、Server は `Idle` を指示します。
+
+> [!NOTE]
+> `WAKE_WORD` の場合、CoreS3 は内部的にマイク uplink を開始しますが、状態表示は `Listening` に遷移せず `Idle(Server-WWD)` のままです。また無音 3 秒による自動終了も行いません。
 
 ## ウェイクワード検出 `WakeWordEvt`
 
@@ -111,6 +122,31 @@
 - body: `WakeWordEvent { detected }`
 - `Idle` 中のウェイクワード検出をサーバー側に通知します。
 - REST API の `POST /v1/stackchan/{ip}/wakeword` は、このイベントをサーバー内部で擬似発火させます。
+
+## メタデータ交換 `FirmwareMetadata` / `ServerMetadata`
+
+WebSocket 接続後、能力情報を相互交換します。
+
+- CoreS3 → Server: `FirmwareMetadata`
+  - `has_device_wake_word`: クライアント側 wakeword 対応有無
+  - そのほか `device_type`, `display_width`, `display_height`, `has_led`, `servo_type`, `supports_audio_duplex`, `firmware_version`
+- Server → CoreS3: `ServerMetadata`
+  - `has_server_wake_word`: サーバー側 wakeword 対応有無
+  - `server_version`
+
+CoreS3 側は `has_server_wake_word=true` を受けると、デバイス側 wakeword を使わずにサーバー側検出モードで待機します（表示は `Idle(Server-WWD)`）。
+
+## サーバーサイド wakeword 検出フロー
+
+- 環境変数 `USE_SERVER_SIDE_WWD_WHISPER_SERVER=1` の場合、サーバーは `@app.setup()` 完了後と `Idle` 復帰後に自動でサーバーサイド wakeword 検出を開始します。
+- REST API `POST /v1/stackchan/{ip}/wakeword/server-detect` を呼ぶと、
+  サーバーは `StateCmd(Listening, WAKE_WORD)` を送信してマイク uplink を受信します。
+- 受信した音声の直近 3 秒窓を 0.5 秒ごとに音声認識へ渡し、
+  定義キーワード（例: `スタクチャン`）を含むか判定します。
+- 各判定タイミングの認識結果はすべてログ出力されます。
+- キーワード検出時は内部 wakeword イベントを発火し、通常の `talk_session` フローに進みます。
+- 検出完了時（検出/未検出を問わず）は `StateCmd(Idle)` で待機状態に戻します。
+- この間、CoreS3 の画面表示は `Listening` ではなく `Idle(Server-WWD)` を維持します。
 
 ## 状態通知 `StateEvt`
 

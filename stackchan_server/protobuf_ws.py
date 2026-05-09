@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from typing import Any, Literal, cast
 
 from .generated_protobuf import websocket_message_pb2 as _ws_pb2
@@ -13,6 +13,12 @@ ServoWaitType: type[StrEnum] | None = None
 ServoMoveCommand = tuple[Literal["move_x", "move_y"] | StrEnum, int, int]
 ServoSleepCommand = tuple[Literal["sleep"] | StrEnum, int]
 ServoCommand = ServoMoveCommand | ServoSleepCommand
+
+
+class ListeningPurpose(IntEnum):
+    UNSPECIFIED = 0
+    SPEECH = 1
+    WAKE_WORD = 2
 
 
 def _ensure_range(value: int, *, minimum: int, maximum: int, label: str) -> int:
@@ -92,13 +98,19 @@ def encode_audio_wav_end_message(seq: int) -> bytes:
     return message.SerializeToString()
 
 
-def encode_state_command_message(seq: int, state_id: int) -> bytes:
+def encode_state_command_message(
+    seq: int,
+    state_id: int,
+    *,
+    listening_purpose: int = ListeningPurpose.SPEECH,
+) -> bytes:
     message = _new_message(
         ws_pb2.MESSAGE_KIND_STATE_CMD,
         ws_pb2.MESSAGE_TYPE_DATA,
         seq,
     )
     message.state_cmd.state = int(state_id)
+    message.state_cmd.listening_purpose = int(listening_purpose)
     return message.SerializeToString()
 
 
@@ -173,6 +185,7 @@ def encode_servo_command_message(seq: int, commands: Sequence[ServoCommand]) -> 
 
 __all__ = [
     "ServoCommand",
+    "ListeningPurpose",
     "encode_audio_pcm_data_message",
     "encode_audio_pcm_end_message",
     "encode_audio_pcm_start_message",
