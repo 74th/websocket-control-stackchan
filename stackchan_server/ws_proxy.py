@@ -217,7 +217,7 @@ class WsProxy:
         self._servo_sent_counter = target_counter
         self._pending_servo_wait_targets.append(target_counter)
         try:
-            await self.ws.send_bytes(
+            await self._send_ws_bytes(
                 encode_servo_command_message(self._next_down_seq(), commands)
             )
         except Exception:
@@ -254,7 +254,11 @@ class WsProxy:
         if self._receiving_task:
             self._receiving_task.cancel()
             with suppress(asyncio.CancelledError):
-                await self._receiving_task
+                try:
+                    await self._receiving_task
+                except RuntimeError as exc:
+                    if not self._is_closed_websocket_runtime_error(exc):
+                        raise
         await self._listener.close()
 
     async def start_talking(self, text: str) -> None:
@@ -341,107 +345,27 @@ class WsProxy:
     async def _receive_loop(self) -> None:
         try:
             while True:
-                raw_message = await self.ws.receive_bytes()
+                try:
+                    raw_message = await self.ws.receive_bytes()
+                except RuntimeError as exc:
+                    if self._is_closed_websocket_runtime_error(exc):
+                        break
+                    raise
                 try:
                     message = parse_websocket_message(raw_message)
                 except DecodeError:
                     await self.ws.close(code=1003, reason="invalid protobuf message")
                     break
 
-                if message.kind == ws_pb2.MESSAGE_KIND_AUDIO_PCM:
-                    body_name = message.WhichOneof("body")
-
-                    if self._should_drain_trailing_pcm():
-                        if (
-                            message.message_type == ws_pb2.MESSAGE_TYPE_START
-                            and body_name == "audio_pcm_start"
-                        ):
-                            logger.info(
-                                "Received a new PCM START while draining trailing wake-word audio; resuming normal routing"
-                            )
-                            self._clear_trailing_pcm_drain()
-                        elif (
-                            message.message_type == ws_pb2.MESSAGE_TYPE_DATA
-                            and body_name == "audio_pcm_data"
-                        ):
-                            logger.info(
-                                "Discarding trailing PCM DATA after wake-word detection stop payload_bytes=%d",
-                                len(message.audio_pcm_data.pcm_bytes),
-                            )
-                            continue
-                        elif (
-                            message.message_type == ws_pb2.MESSAGE_TYPE_END
-                            and body_name == "audio_pcm_end"
-                        ):
-                            logger.info(
-                                "Finished draining trailing PCM after wake-word detection stop"
-                            )
-                            self._clear_trailing_pcm_drain()
-                            continue
-
-                    if (
-                        self._server_wakeword_detector is not None
-                        and self._server_wakeword_detector.running
-                    ):
-                        if (
-                            message.message_type == ws_pb2.MESSAGE_TYPE_START
-                            and body_name == "audio_pcm_start"
-                        ):
-                            await self._server_wakeword_detector.handle_start()
-                            continue
-
-                        if (
-                            message.message_type == ws_pb2.MESSAGE_TYPE_DATA
-                            and body_name == "audio_pcm_data"
-                        ):
-                            payload = bytes(message.audio_pcm_data.pcm_bytes)
-                            await self._server_wakeword_detector.handle_data(payload)
-                            continue
-
-                        if (
-                            message.message_type == ws_pb2.MESSAGE_TYPE_END
-                            and body_name == "audio_pcm_end"
-                        ):
-                            await self._server_wakeword_detector.handle_end()
-                            continue
-
-                        await self.ws.close(code=1003, reason="unknown wakeword PCM protobuf body")
+                if message.kind == ws_pb2.MESSAGE_KIND_SERVER_WWD_PCM:
+                    if not await self._handle_server_wakeword_pcm_message(message):
                         break
+                    continue
 
-                    if (
-                        message.message_type == ws_pb2.MESSAGE_TYPE_START
-                        and body_name == "audio_pcm_start"
-                    ):
-                        if not await self._listener.handle_start(self.ws):
-                            break
-                        continue
-
-                    if (
-                        message.message_type == ws_pb2.MESSAGE_TYPE_DATA
-                        and body_name == "audio_pcm_data"
-                    ):
-                        payload = bytes(message.audio_pcm_data.pcm_bytes)
-                        if not await self._listener.handle_data(
-                            self.ws, len(payload), payload
-                        ):
-                            break
-                        continue
-
-                    if (
-                        message.message_type == ws_pb2.MESSAGE_TYPE_END
-                        and body_name == "audio_pcm_end"
-                    ):
-                        await self._listener.handle_end(
-                            self.ws,
-                            payload_bytes=0,
-                            payload=b"",
-                            send_state_command=self.send_state_command,
-                            thinking_state=FirmwareState.THINKING,
-                        )
-                        continue
-
-                    await self.ws.close(code=1003, reason="unknown PCM protobuf body")
-                    break
+                if message.kind == ws_pb2.MESSAGE_KIND_AUDIO_PCM:
+                    if not await self._handle_audio_pcm_message(message):
+                        break
+                    continue
 
                 if message.kind == ws_pb2.MESSAGE_KIND_WAKE_WORD_EVT:
                     self._handle_wakeword_event(message)
@@ -469,6 +393,101 @@ class WsProxy:
             pass
         finally:
             self._closed = True
+
+    async def _handle_server_wakeword_pcm_message(self, message: Any) -> bool:
+        body_name = message.WhichOneof("body")
+
+        if self._should_drain_trailing_pcm():
+            if (
+                message.message_type == ws_pb2.MESSAGE_TYPE_START
+                and body_name == "audio_pcm_start"
+            ):
+                logger.info(
+                    "Received a new server-side wake-word PCM START while draining trailing audio; resuming normal routing"
+                )
+                self._clear_trailing_pcm_drain()
+            elif (
+                message.message_type == ws_pb2.MESSAGE_TYPE_DATA
+                and body_name == "audio_pcm_data"
+            ):
+                logger.info(
+                    "Discarding trailing server-side wake-word PCM DATA payload_bytes=%d",
+                    len(message.audio_pcm_data.pcm_bytes),
+                )
+                return True
+            elif (
+                message.message_type == ws_pb2.MESSAGE_TYPE_END
+                and body_name == "audio_pcm_end"
+            ):
+                logger.info("Finished draining trailing server-side wake-word PCM")
+                self._clear_trailing_pcm_drain()
+                return True
+
+        detector = self._server_wakeword_detector
+        if detector is None or not detector.running:
+            logger.info(
+                "Ignoring server-side wake-word PCM while detector is inactive type=%s body=%s",
+                message.message_type,
+                body_name,
+            )
+            return True
+
+        if (
+            message.message_type == ws_pb2.MESSAGE_TYPE_START
+            and body_name == "audio_pcm_start"
+        ):
+            await detector.handle_start()
+            return True
+
+        if (
+            message.message_type == ws_pb2.MESSAGE_TYPE_DATA
+            and body_name == "audio_pcm_data"
+        ):
+            payload = bytes(message.audio_pcm_data.pcm_bytes)
+            await detector.handle_data(payload)
+            return True
+
+        if (
+            message.message_type == ws_pb2.MESSAGE_TYPE_END
+            and body_name == "audio_pcm_end"
+        ):
+            await detector.handle_end()
+            return True
+
+        await self.ws.close(code=1003, reason="unknown server wake-word PCM protobuf body")
+        return False
+
+    async def _handle_audio_pcm_message(self, message: Any) -> bool:
+        body_name = message.WhichOneof("body")
+
+        if (
+            message.message_type == ws_pb2.MESSAGE_TYPE_START
+            and body_name == "audio_pcm_start"
+        ):
+            return await self._listener.handle_start(self.ws)
+
+        if (
+            message.message_type == ws_pb2.MESSAGE_TYPE_DATA
+            and body_name == "audio_pcm_data"
+        ):
+            payload = bytes(message.audio_pcm_data.pcm_bytes)
+            return await self._listener.handle_data(self.ws, len(payload), payload)
+
+        if (
+            message.message_type == ws_pb2.MESSAGE_TYPE_END
+            and body_name == "audio_pcm_end"
+        ):
+            await self._listener.handle_end(
+                self.ws,
+                payload_bytes=0,
+                payload=b"",
+                send_state_command=self.send_state_command,
+                thinking_state=FirmwareState.THINKING,
+            )
+            return True
+
+        await self.ws.close(code=1003, reason="unknown PCM protobuf body")
+        return False
 
     def _handle_wakeword_event(self, message: Any) -> None:
         if message.message_type != ws_pb2.MESSAGE_TYPE_DATA:
@@ -509,7 +528,7 @@ class WsProxy:
             self.firmware_metadata.firmware_version,
         )
         self.server_metadata = self._build_server_metadata(self.firmware_metadata)
-        await self.ws.send_bytes(
+        await self._send_ws_bytes(
             encode_server_metadata_message(
                 self._next_down_seq(),
                 has_server_wake_word=self.server_metadata.has_server_wake_word,
@@ -566,13 +585,32 @@ class WsProxy:
         *,
         listening_purpose: ListeningPurpose = ListeningPurpose.SPEECH,
     ) -> None:
-        await self.ws.send_bytes(
+        await self._send_ws_bytes(
             encode_state_command_message(
                 self._next_down_seq(),
                 int(state_id),
                 listening_purpose=int(listening_purpose),
             )
         )
+
+    async def _send_ws_bytes(self, data: bytes) -> None:
+        try:
+            await self.ws.send_bytes(data)
+        except RuntimeError as exc:
+            self._raise_websocket_disconnect_from_runtime_error(exc)
+
+    def _is_closed_websocket_runtime_error(self, exc: RuntimeError) -> bool:
+        message = str(exc)
+        return (
+            'Cannot call "send" once a close message has been sent.' in message
+            or 'WebSocket is not connected. Need to call "accept" first.' in message
+        )
+
+    def _raise_websocket_disconnect_from_runtime_error(self, exc: RuntimeError) -> None:
+        if not self._is_closed_websocket_runtime_error(exc):
+            raise exc
+        self._closed = True
+        raise WebSocketDisconnect() from exc
 
     async def _run_server_wakeword_detection(self) -> bool:
         detector = self._server_wakeword_detector

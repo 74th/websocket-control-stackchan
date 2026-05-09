@@ -7,7 +7,10 @@ from logging import getLogger
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
-from ..speech_recognition.whisper_server import WhisperServerSpeechToText
+from ..speech_recognition.whisper_server import (
+    WhisperServerSpeechToText,
+    WhisperServerSpeechToTextConfig,
+)
 from ..static import LISTEN_AUDIO_FORMAT
 
 logger = getLogger(__name__)
@@ -17,25 +20,32 @@ class WakeWordDetectionError(Exception):
     pass
 
 
-class ServerSideWakeWordConfig(BaseSettings):
+class WhisperServerWakeWordDetectorConfig(BaseSettings):
     keywords: list[str] = Field(default_factory=lambda: ["スタックチャン"])
     window_seconds: float = 3.0
     interval_seconds: float = 0.5
     timeout_seconds: float = 30.0
 
     class Config:
-        env_prefix = "STACKCHAN_SERVER_WAKE_WORD_"
+        env_prefix = "STACKCHAN_WWD_"
 
 
-class ServerSideWakeWordDetector:
+class WhisperServerWakeWordSpeechToTextConfig(WhisperServerSpeechToTextConfig):
+    class Config(WhisperServerSpeechToTextConfig.Config):
+        env_prefix = "STACKCHAN_WWD_WHISPER_SERVER_"
+
+
+class WhisperServerWakeWordDetector:
     def __init__(
         self,
         *,
         recognizer: WhisperServerSpeechToText | None = None,
-        config: ServerSideWakeWordConfig | None = None,
+        config: WhisperServerWakeWordDetectorConfig | None = None,
     ) -> None:
-        self.config = config or ServerSideWakeWordConfig()
-        self.recognizer = recognizer or WhisperServerSpeechToText()
+        self.config = config or WhisperServerWakeWordDetectorConfig()
+        self.recognizer = recognizer or WhisperServerSpeechToText(
+            config=WhisperServerWakeWordSpeechToTextConfig()
+        )
         self._pcm_buffer = bytearray()
         self._running = False
         self._detected = False
@@ -199,7 +209,8 @@ def _normalize_text(text: str) -> str:
 
 
 __all__ = [
-    "ServerSideWakeWordConfig",
-    "ServerSideWakeWordDetector",
+    "WhisperServerWakeWordDetector",
+    "WhisperServerWakeWordDetectorConfig",
+    "WhisperServerWakeWordSpeechToTextConfig",
     "WakeWordDetectionError",
 ]

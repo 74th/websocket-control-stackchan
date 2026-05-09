@@ -86,6 +86,22 @@ STACKCHAN_WHISPER_SERVER_URL=http://localhost:13305/api/v1/audio/transcriptions
 STACKCHAN_WHISPER_SERVER_MODEL=Whisper-Large-v3-Turbo
 ```
 
+### (オプション) サーバーサイド wakeword 用 Whisper Server の設定
+
+サーバーサイド wakeword 検出を有効にするには、以下を設定します。
+
+- `STACKCHAN_USE_WWD_WHISPER_SERVER`: `1`
+- `STACKCHAN_WWD_WHISPER_SERVER_URL`: wakeword 検出専用 Whisper Server の推論エンドポイント URL
+- `STACKCHAN_WWD_WHISPER_SERVER_MODEL`: wakeword 検出専用に利用するモデル名
+
+通常の音声認識で使う `STACKCHAN_WHISPER_SERVER_URL` / `STACKCHAN_WHISPER_SERVER_MODEL` とは別設定です。
+
+```
+STACKCHAN_USE_WWD_WHISPER_SERVER=1
+STACKCHAN_WWD_WHISPER_SERVER_URL="http://127.0.0.1:8080/inference"
+STACKCHAN_WWD_WHISPER_SERVER_MODEL=
+```
+
 ## 音声合成の設定
 
 音声合成エンジンとして、以下に対応しています。

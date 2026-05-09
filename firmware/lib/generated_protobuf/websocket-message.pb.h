@@ -21,7 +21,8 @@ typedef enum _stackchan_websocket_v1_MessageKind {
     stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVO_CMD = 7,
     stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVO_DONE_EVT = 8,
     stackchan_websocket_v1_MessageKind_MESSAGE_KIND_FIRMWARE_METADATA = 9,
-    stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVER_METADATA = 10
+    stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVER_METADATA = 10,
+    stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVER_WWD_PCM = 11
 } stackchan_websocket_v1_MessageKind;
 
 typedef enum _stackchan_websocket_v1_MessageType {
@@ -172,8 +173,8 @@ extern "C" {
 
 /* Helper constants for enums */
 #define _stackchan_websocket_v1_MessageKind_MIN stackchan_websocket_v1_MessageKind_MESSAGE_KIND_UNSPECIFIED
-#define _stackchan_websocket_v1_MessageKind_MAX stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVER_METADATA
-#define _stackchan_websocket_v1_MessageKind_ARRAYSIZE ((stackchan_websocket_v1_MessageKind)(stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVER_METADATA+1))
+#define _stackchan_websocket_v1_MessageKind_MAX stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVER_WWD_PCM
+#define _stackchan_websocket_v1_MessageKind_ARRAYSIZE ((stackchan_websocket_v1_MessageKind)(stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVER_WWD_PCM+1))
 
 #define _stackchan_websocket_v1_MessageType_MIN stackchan_websocket_v1_MessageType_MESSAGE_TYPE_UNSPECIFIED
 #define _stackchan_websocket_v1_MessageType_MAX stackchan_websocket_v1_MessageType_MESSAGE_TYPE_END

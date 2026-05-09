@@ -28,6 +28,7 @@
 | 名前 | 方向 | 用途 |
 | --- | --- | --- |
 | `AudioPcm` | CoreS3 → Server | マイク音声 PCM ストリーム |
+| `ServerWwdPcm` | CoreS3 → Server | サーバーサイド wakeword 検出専用 PCM ストリーム |
 | `AudioWav` | Server → CoreS3 | TTS 音声 PCM ストリーム |
 | `StateCmd` | Server → CoreS3 | 状態遷移指示 |
 | `WakeWordEvt` | CoreS3 → Server | ウェイクワード検出通知 |
@@ -63,6 +64,20 @@
   - 時間長は約 `125 ms`
 - 無音判定は平均絶対振幅 `<= 200` が 3 秒継続したときに発火します。
 - 停止時は未送信サンプルを `DATA` で flush してから `END` を送ります。
+
+## サーバーサイド wakeword 入力 `ServerWwdPcm`
+
+- 方向: CoreS3 → Server
+- フォーマット: PCM16LE / 16kHz / 1ch
+- シーケンス: `AudioPcmStart` → `AudioChunk` 複数回 → `AudioPcmEnd`
+- `kind`: `MESSAGE_KIND_SERVER_WWD_PCM`
+- body は `AudioPcm` と同じ `AudioPcmStart` / `AudioChunk` / `AudioPcmEnd` を使います。
+
+### 現行実装メモ
+
+- `StateCmd(Listening, WAKE_WORD)` を受けた CoreS3 は、見た目の状態を `Idle(Server-WWD)` のままにしてこの kind で uplink します。
+- 無音 3 秒によるクライアント側自動終了は行いません。
+- サーバーはこの kind だけを server-side wakeword detector にルーティングします。
 
 ## スピーカ再生 `AudioWav`
 
@@ -138,9 +153,8 @@ CoreS3 側は `has_server_wake_word=true` を受けると、デバイス側 wake
 
 ## サーバーサイド wakeword 検出フロー
 
-- 環境変数 `USE_SERVER_SIDE_WWD_WHISPER_SERVER=1` の場合、サーバーは `@app.setup()` 完了後と `Idle` 復帰後に自動でサーバーサイド wakeword 検出を開始します。
-- REST API `POST /v1/stackchan/{ip}/wakeword/server-detect` を呼ぶと、
-  サーバーは `StateCmd(Listening, WAKE_WORD)` を送信してマイク uplink を受信します。
+- 環境変数 `STACKCHAN_USE_WWD_WHISPER_SERVER=1` の場合、サーバーは `@app.setup()` 完了後と `Idle` 復帰後に自動でサーバーサイド wakeword 検出を開始します。
+- サーバーは `StateCmd(Listening, WAKE_WORD)` を送信して `MESSAGE_KIND_SERVER_WWD_PCM` のマイク uplink を受信します。
 - 受信した音声の直近 3 秒窓を 0.5 秒ごとに音声認識へ渡し、
   定義キーワード（例: `スタクチャン`）を含むか判定します。
 - 各判定タイミングの認識結果はすべてログ出力されます。

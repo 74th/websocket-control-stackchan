@@ -113,9 +113,9 @@ bool Listening::stopStreaming()
   }
 
   streaming_ = false;
+  ok = sendPacket(stackchan_websocket_v1_MessageType_MESSAGE_TYPE_END, nullptr, 0) && ok;
   session_mode_ = SessionMode::Speech;
   auto_stop_for_silence_ = true;
-  ok = sendPacket(stackchan_websocket_v1_MessageType_MESSAGE_TYPE_END, nullptr, 0) && ok;
   return ok;
 }
 
@@ -236,7 +236,10 @@ bool Listening::sendPacket(stackchan_websocket_v1_MessageType type, const int16_
 
   auto &message = g_listening_tx_message;
   message = stackchan_websocket_v1_WebSocketMessage_init_zero;
-  message.kind = stackchan_websocket_v1_MessageKind_MESSAGE_KIND_AUDIO_PCM;
+  message.kind =
+      (session_mode_ == SessionMode::WakeWord)
+          ? stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVER_WWD_PCM
+          : stackchan_websocket_v1_MessageKind_MESSAGE_KIND_AUDIO_PCM;
   message.message_type = type;
   message.seq = seq_counter_++;
 
