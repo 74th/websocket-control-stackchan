@@ -134,16 +134,12 @@ class WsProxy:
         self._servo_sent_counter = 0
         self._pending_servo_wait_targets: deque[int] = deque()
         self._server_wwd = ServerWwdController(
-            send_state_command=self.send_state_command,
-            set_current_state=lambda state: setattr(
-                self, "_current_firmware_state", FirmwareState(state)
-            ),
+            enter_server_wwd=self._enter_server_wwd_state,
+            return_to_idle=self._return_to_idle_state,
             close_websocket=self.ws.close,
-            current_state=lambda: int(self._current_firmware_state),
+            is_idle_state=lambda: self._current_firmware_state == FirmwareState.IDLE,
             is_closed=lambda: self._closed,
             on_detected=self._wakeword_event.set,
-            server_wwd_state=int(FirmwareState.SERVER_WWD),
-            idle_state=int(FirmwareState.IDLE),
         )
 
     @property
@@ -447,6 +443,13 @@ class WsProxy:
                 int(state_id),
             )
         )
+
+    async def _enter_server_wwd_state(self) -> None:
+        await self.send_state_command(FirmwareState.SERVER_WWD)
+
+    async def _return_to_idle_state(self) -> None:
+        self._current_firmware_state = FirmwareState.IDLE
+        await self.send_state_command(FirmwareState.IDLE)
 
     async def _send_ws_bytes(self, data: bytes) -> None:
         try:

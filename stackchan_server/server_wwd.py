@@ -20,23 +20,19 @@ class ServerWwdController:
     def __init__(
         self,
         *,
-        send_state_command: Callable[[int], Awaitable[None]],
-        set_current_state: Callable[[int], None],
+        enter_server_wwd: Callable[[], Awaitable[None]],
+        return_to_idle: Callable[[], Awaitable[None]],
         close_websocket: Callable[[int, str], Awaitable[None]],
-        current_state: Callable[[], int],
+        is_idle_state: Callable[[], bool],
         is_closed: Callable[[], bool],
         on_detected: Callable[[], None],
-        server_wwd_state: int,
-        idle_state: int,
     ) -> None:
-        self._send_state_command = send_state_command
-        self._set_current_state = set_current_state
+        self._enter_server_wwd = enter_server_wwd
+        self._return_to_idle = return_to_idle
         self._close_websocket = close_websocket
-        self._current_state = current_state
+        self._is_idle_state = is_idle_state
         self._is_closed = is_closed
         self._on_detected = on_detected
-        self._server_wwd_state = server_wwd_state
-        self._idle_state = idle_state
 
         self._detector = create_server_side_wake_word_detector()
         self._task: Optional[asyncio.Task[bool]] = None
@@ -58,11 +54,7 @@ class ServerWwdController:
         self._auto_start = True
 
     async def start_if_available(self) -> bool:
-        if (
-            self._is_closed()
-            or self._detector is None
-            or self._current_state() != self._idle_state
-        ):
+        if self._is_closed() or self._detector is None or not self._is_idle_state():
             return False
 
         if self._task is not None and not self._task.done():
@@ -188,7 +180,7 @@ class ServerWwdController:
         should_restart = False
         try:
             await detector.start()
-            await self._send_state_command(self._server_wwd_state)
+            await self._enter_server_wwd()
             detected = await detector.wait_result()
             if detected:
                 self._on_detected()
@@ -208,9 +200,8 @@ class ServerWwdController:
             await detector.stop()
             self._arm_trailing_pcm_drain()
             if not self._is_closed():
-                self._set_current_state(self._idle_state)
                 try:
-                    await self._send_state_command(self._idle_state)
+                    await self._return_to_idle()
                 except Exception:
                     logger.exception(
                         "Failed to return firmware to idle after wake-word detection"
