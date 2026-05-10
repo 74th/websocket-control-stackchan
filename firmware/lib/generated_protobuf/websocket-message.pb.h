@@ -21,7 +21,8 @@ typedef enum _stackchan_websocket_v1_MessageKind {
     stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVO_CMD = 7,
     stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVO_DONE_EVT = 8,
     stackchan_websocket_v1_MessageKind_MESSAGE_KIND_FIRMWARE_METADATA = 9,
-    stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVER_METADATA = 10
+    stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVER_METADATA = 10,
+    stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVER_WWD_PCM = 11
 } stackchan_websocket_v1_MessageKind;
 
 typedef enum _stackchan_websocket_v1_MessageType {
@@ -35,7 +36,8 @@ typedef enum _stackchan_websocket_v1_StackchanState {
     stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_IDLE = 0,
     stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_LISTENING = 1,
     stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_THINKING = 2,
-    stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_SPEAKING = 3
+    stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_SPEAKING = 3,
+    stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_SERVER_WWD = 4
 } stackchan_websocket_v1_StackchanState;
 
 typedef enum _stackchan_websocket_v1_ServoOperation {
@@ -165,16 +167,16 @@ extern "C" {
 
 /* Helper constants for enums */
 #define _stackchan_websocket_v1_MessageKind_MIN stackchan_websocket_v1_MessageKind_MESSAGE_KIND_UNSPECIFIED
-#define _stackchan_websocket_v1_MessageKind_MAX stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVER_METADATA
-#define _stackchan_websocket_v1_MessageKind_ARRAYSIZE ((stackchan_websocket_v1_MessageKind)(stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVER_METADATA+1))
+#define _stackchan_websocket_v1_MessageKind_MAX stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVER_WWD_PCM
+#define _stackchan_websocket_v1_MessageKind_ARRAYSIZE ((stackchan_websocket_v1_MessageKind)(stackchan_websocket_v1_MessageKind_MESSAGE_KIND_SERVER_WWD_PCM+1))
 
 #define _stackchan_websocket_v1_MessageType_MIN stackchan_websocket_v1_MessageType_MESSAGE_TYPE_UNSPECIFIED
 #define _stackchan_websocket_v1_MessageType_MAX stackchan_websocket_v1_MessageType_MESSAGE_TYPE_END
 #define _stackchan_websocket_v1_MessageType_ARRAYSIZE ((stackchan_websocket_v1_MessageType)(stackchan_websocket_v1_MessageType_MESSAGE_TYPE_END+1))
 
 #define _stackchan_websocket_v1_StackchanState_MIN stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_IDLE
-#define _stackchan_websocket_v1_StackchanState_MAX stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_SPEAKING
-#define _stackchan_websocket_v1_StackchanState_ARRAYSIZE ((stackchan_websocket_v1_StackchanState)(stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_SPEAKING+1))
+#define _stackchan_websocket_v1_StackchanState_MAX stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_SERVER_WWD
+#define _stackchan_websocket_v1_StackchanState_ARRAYSIZE ((stackchan_websocket_v1_StackchanState)(stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_SERVER_WWD+1))
 
 #define _stackchan_websocket_v1_ServoOperation_MIN stackchan_websocket_v1_ServoOperation_SERVO_OPERATION_SLEEP
 #define _stackchan_websocket_v1_ServoOperation_MAX stackchan_websocket_v1_ServoOperation_SERVO_OPERATION_MOVE_Y

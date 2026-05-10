@@ -13,6 +13,8 @@ const char *stateToString(StateMachine::State s)
 		return "Thinking";
 	case StateMachine::Speaking:
 		return "Speaking";
+	case StateMachine::ServerWwd:
+		return "Idle(Server-WWD)";
 	case StateMachine::Disconnected:
 		return "Disconnected";
 	default:
@@ -64,6 +66,11 @@ bool StateMachine::isSpeaking() const
 bool StateMachine::isThinking() const
 {
 	return state_ == Thinking;
+}
+
+bool StateMachine::isServerWwd() const
+{
+	return state_ == ServerWwd;
 }
 
 bool StateMachine::isDisconnected() const

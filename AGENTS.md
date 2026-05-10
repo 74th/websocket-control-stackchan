@@ -12,8 +12,8 @@
 
 ## 状態遷移の要点
 
-- ファームウェア状態: `Idle`, `Listening`, `Thinking`, `Speaking`, `Disconnected`
-- サーバーから指示できるのは `StateCmd` の `Idle` / `Listening` / `Thinking` / `Speaking`
+- ファームウェア状態: `Idle`, `Listening`, `Thinking`, `Speaking`, `ServerWwd`, `Disconnected`
+- サーバーから指示できるのは `StateCmd` の `Idle` / `Listening` / `Thinking` / `Speaking` / `ServerWwd`
 - `Disconnected` はファームウェア内部状態で、WebSocket 切断時に入る
 - `WakeWordEvt` を受けるか、REST API の wakeword 擬似発火で talk session が始まる
 
@@ -75,6 +75,7 @@
 - `websocket.client.host` を StackChan の識別子として使う
 - 同一 IP の再接続時は既存接続を置き換える
 - `listen()` は `Listening` 指示後、音声 uplink 完了を待つ
+- サーバーサイド wakeword 検出中は `ServerWwd` を指示する
 - `speak()` は TTS downlink 送信後、`SpeakDoneEvt` を待つ
 - `move_servo()` / `wait_servo_complete()` を公開
 
@@ -106,7 +107,7 @@
   - `MoveX`, `MoveY`, `Sleep` を順次処理
   - 完了時に `ServoDoneEvt`
 - `src/display.cpp`
-  - `Idle=濃いグレー`, `Listening=青`, `Thinking=オレンジ`, `Speaking=緑`, `Disconnected=赤`
+  - `Idle=濃いグレー`, `Listening=青`, `Thinking=オレンジ`, `Speaking=緑`, `ServerWwd=Idle(Server-WWD)`, `Disconnected=赤`
 
 ## サンプルアプリ
 

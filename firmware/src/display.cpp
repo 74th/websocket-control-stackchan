@@ -4,6 +4,7 @@
 
 #include "config.h"
 #include "display.hpp"
+#include "metadata.hpp"
 
 #if USE_STACKCHAN_BSP
 #define GFXModule M5StackChan.Display()
@@ -118,6 +119,11 @@ void Display::drawForState(StateMachine::State state)
     bg_color = TFT_GREEN;
     font_color = TFT_BLACK;
     led_color = Adafruit_NeoPixel::ColorHSV(kLedHueGreen, 255, ledValueFromBrightness());
+    break;
+  case StateMachine::ServerWwd:
+    bg_color = TFT_DARKGRAY;
+    font_color = TFT_WHITE;
+    led_color = Adafruit_NeoPixel::ColorHSV(0, 0, 0);
     break;
   case StateMachine::Disconnected:
     bg_color = TFT_RED;

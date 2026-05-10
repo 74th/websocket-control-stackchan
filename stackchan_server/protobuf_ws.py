@@ -92,7 +92,10 @@ def encode_audio_wav_end_message(seq: int) -> bytes:
     return message.SerializeToString()
 
 
-def encode_state_command_message(seq: int, state_id: int) -> bytes:
+def encode_state_command_message(
+    seq: int,
+    state_id: int,
+) -> bytes:
     message = _new_message(
         ws_pb2.MESSAGE_KIND_STATE_CMD,
         ws_pb2.MESSAGE_TYPE_DATA,

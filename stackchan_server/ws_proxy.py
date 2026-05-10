@@ -12,7 +12,6 @@ from typing import Any, Literal, Optional, Sequence, TypeAlias
 
 from fastapi import WebSocket, WebSocketDisconnect
 from google.protobuf.message import DecodeError
-from pydantic_settings import BaseSettings
 
 from . import __version__
 from .generated_protobuf import websocket_message_pb2 as _ws_pb2
@@ -23,6 +22,7 @@ from .protobuf_ws import (
     encode_state_command_message,
     parse_websocket_message,
 )
+from .server_wwd import ServerWwdController
 from .speak import SpeakHandler
 from .static import LISTEN_AUDIO_FORMAT
 from .types import SpeechRecognizer, SpeechSynthesizer
@@ -45,22 +45,12 @@ _LISTEN_AUDIO_TIMEOUT_SECONDS = 10.0
 _DEBUG_RECORDING_ENABLED = os.getenv("DEBUG_RECODING") == "1"
 
 
-class _WakeWordServerConfig(BaseSettings):
-    no_use_client_wakeup_word: bool = False
-    use_open_wake_word: bool = False
-
-    class Config:
-        env_prefix = "STACKCHAN_"
-
-
-_WAKEWORD_SERVER_CONFIG = _WakeWordServerConfig()
-
-
 class FirmwareState(IntEnum):
     IDLE = 0
     LISTENING = 1
     THINKING = 2
     SPEAKING = 3
+    SERVER_WWD = 4
 
 
 class ServoMoveType(StrEnum):
@@ -129,7 +119,6 @@ class WsProxy:
             recordings_dir=self.recordings_dir,
             debug_recording=self._debug_recording,
         )
-
         self._receiving_task: Optional[asyncio.Task] = None
         self._closed = False
 
@@ -144,6 +133,18 @@ class WsProxy:
         self._servo_done_counter = 0
         self._servo_sent_counter = 0
         self._pending_servo_wait_targets: deque[int] = deque()
+        self._server_wwd = ServerWwdController(
+            send_state_command=self.send_state_command,
+            set_current_state=lambda state: setattr(
+                self, "_current_firmware_state", FirmwareState(state)
+            ),
+            close_websocket=self.ws.close,
+            current_state=lambda: int(self._current_firmware_state),
+            is_closed=lambda: self._closed,
+            on_detected=self._wakeword_event.set,
+            server_wwd_state=int(FirmwareState.SERVER_WWD),
+            idle_state=int(FirmwareState.IDLE),
+        )
 
     @property
     def closed(self) -> bool:
@@ -157,6 +158,10 @@ class WsProxy:
     def receive_task(self) -> Optional[asyncio.Task]:
         return self._receiving_task
 
+    @property
+    def has_server_wakeword_detector(self) -> bool:
+        return self._server_wwd.available
+
     def trigger_wakeword(self) -> None:
         """Web API から擬似的に WAKEWORD_EVT を発火させる。"""
         logger.info("Triggered wakeword via API")
@@ -165,6 +170,7 @@ class WsProxy:
     async def wait_for_talk_session(self) -> None:
         while True:
             if self._wakeword_event.is_set():
+                await self._server_wwd.stop()
                 self._wakeword_event.clear()
                 return
             if self._closed:
@@ -172,6 +178,7 @@ class WsProxy:
             await asyncio.sleep(0.05)
 
     async def listen(self) -> str:
+        await self._server_wwd.stop()
         return await self._listener.listen(
             send_state_command=self.send_state_command,
             is_closed=lambda: self._closed,
@@ -188,11 +195,16 @@ class WsProxy:
             is_closed=lambda: self._closed,
         )
 
-    async def send_state_command(self, state_id: int | FirmwareState) -> None:
+    async def send_state_command(
+        self,
+        state_id: int | FirmwareState,
+    ) -> None:
         await self._send_state_command(state_id)
 
     async def reset_state(self) -> None:
         await self.send_state_command(FirmwareState.IDLE)
+        self._current_firmware_state = FirmwareState.IDLE
+        self._server_wwd.schedule_restart()
 
     async def move_servo(self, commands: Sequence[ServoCommand]) -> None:
         previous_counter = self._servo_sent_counter
@@ -200,7 +212,7 @@ class WsProxy:
         self._servo_sent_counter = target_counter
         self._pending_servo_wait_targets.append(target_counter)
         try:
-            await self.ws.send_bytes(
+            await self._send_ws_bytes(
                 encode_servo_command_message(self._next_down_seq(), commands)
             )
         except Exception:
@@ -232,62 +244,49 @@ class WsProxy:
 
     async def close(self) -> None:
         self._closed = True
+        await self._server_wwd.stop()
         if self._receiving_task:
             self._receiving_task.cancel()
             with suppress(asyncio.CancelledError):
-                await self._receiving_task
+                try:
+                    await self._receiving_task
+                except RuntimeError as exc:
+                    if not self._is_closed_websocket_runtime_error(exc):
+                        raise
         await self._listener.close()
 
     async def start_talking(self, text: str) -> None:
         await self.speak(text)
 
+    async def enable_auto_server_wakeword_detection(self) -> None:
+        await self._server_wwd.enable_auto_detection()
+        if self.firmware_metadata is not None:
+            await self._server_wwd.start_if_available()
+
     async def _receive_loop(self) -> None:
         try:
             while True:
-                raw_message = await self.ws.receive_bytes()
+                try:
+                    raw_message = await self.ws.receive_bytes()
+                except RuntimeError as exc:
+                    if self._is_closed_websocket_runtime_error(exc):
+                        break
+                    raise
                 try:
                     message = parse_websocket_message(raw_message)
                 except DecodeError:
                     await self.ws.close(code=1003, reason="invalid protobuf message")
                     break
 
+                if message.kind == ws_pb2.MESSAGE_KIND_SERVER_WWD_PCM:
+                    if not await self._server_wwd.handle_pcm_message(message, ws_pb2=ws_pb2):
+                        break
+                    continue
+
                 if message.kind == ws_pb2.MESSAGE_KIND_AUDIO_PCM:
-                    body_name = message.WhichOneof("body")
-
-                    if (
-                        message.message_type == ws_pb2.MESSAGE_TYPE_START
-                        and body_name == "audio_pcm_start"
-                    ):
-                        if not await self._listener.handle_start(self.ws):
-                            break
-                        continue
-
-                    if (
-                        message.message_type == ws_pb2.MESSAGE_TYPE_DATA
-                        and body_name == "audio_pcm_data"
-                    ):
-                        payload = bytes(message.audio_pcm_data.pcm_bytes)
-                        if not await self._listener.handle_data(
-                            self.ws, len(payload), payload
-                        ):
-                            break
-                        continue
-
-                    if (
-                        message.message_type == ws_pb2.MESSAGE_TYPE_END
-                        and body_name == "audio_pcm_end"
-                    ):
-                        await self._listener.handle_end(
-                            self.ws,
-                            payload_bytes=0,
-                            payload=b"",
-                            send_state_command=self.send_state_command,
-                            thinking_state=FirmwareState.THINKING,
-                        )
-                        continue
-
-                    await self.ws.close(code=1003, reason="unknown PCM protobuf body")
-                    break
+                    if not await self._handle_audio_pcm_message(message):
+                        break
+                    continue
 
                 if message.kind == ws_pb2.MESSAGE_KIND_WAKE_WORD_EVT:
                     self._handle_wakeword_event(message)
@@ -315,6 +314,38 @@ class WsProxy:
             pass
         finally:
             self._closed = True
+
+    async def _handle_audio_pcm_message(self, message: Any) -> bool:
+        body_name = message.WhichOneof("body")
+
+        if (
+            message.message_type == ws_pb2.MESSAGE_TYPE_START
+            and body_name == "audio_pcm_start"
+        ):
+            return await self._listener.handle_start(self.ws)
+
+        if (
+            message.message_type == ws_pb2.MESSAGE_TYPE_DATA
+            and body_name == "audio_pcm_data"
+        ):
+            payload = bytes(message.audio_pcm_data.pcm_bytes)
+            return await self._listener.handle_data(self.ws, len(payload), payload)
+
+        if (
+            message.message_type == ws_pb2.MESSAGE_TYPE_END
+            and body_name == "audio_pcm_end"
+        ):
+            await self._listener.handle_end(
+                self.ws,
+                payload_bytes=0,
+                payload=b"",
+                send_state_command=self.send_state_command,
+                thinking_state=FirmwareState.THINKING,
+            )
+            return True
+
+        await self.ws.close(code=1003, reason="unknown PCM protobuf body")
+        return False
 
     def _handle_wakeword_event(self, message: Any) -> None:
         if message.message_type != ws_pb2.MESSAGE_TYPE_DATA:
@@ -355,24 +386,20 @@ class WsProxy:
             self.firmware_metadata.firmware_version,
         )
         self.server_metadata = self._build_server_metadata(self.firmware_metadata)
-        await self.ws.send_bytes(
+        await self._send_ws_bytes(
             encode_server_metadata_message(
                 self._next_down_seq(),
                 has_server_wake_word=self.server_metadata.has_server_wake_word,
                 server_version=self.server_metadata.server_version,
             )
         )
+        if self._server_wwd.auto_start_enabled:
+            await self._server_wwd.start_if_available()
 
     def _build_server_metadata(
         self, firmware_metadata: FirmwareMetadata
     ) -> ServerMetadata:
-        should_use_server_wake_word = (
-            _WAKEWORD_SERVER_CONFIG.use_open_wake_word
-            and (
-                _WAKEWORD_SERVER_CONFIG.no_use_client_wakeup_word
-                or not firmware_metadata.has_device_wake_word
-            )
-        )
+        should_use_server_wake_word = self._server_wwd.available
         return ServerMetadata(
             has_server_wake_word=should_use_server_wake_word,
             server_version=__version__,
@@ -410,10 +437,35 @@ class WsProxy:
         self._servo_done_counter += 1
         logger.info("Received servo done event")
 
-    async def _send_state_command(self, state_id: int | FirmwareState) -> None:
-        await self.ws.send_bytes(
-            encode_state_command_message(self._next_down_seq(), int(state_id))
+    async def _send_state_command(
+        self,
+        state_id: int | FirmwareState,
+    ) -> None:
+        await self._send_ws_bytes(
+            encode_state_command_message(
+                self._next_down_seq(),
+                int(state_id),
+            )
         )
+
+    async def _send_ws_bytes(self, data: bytes) -> None:
+        try:
+            await self.ws.send_bytes(data)
+        except RuntimeError as exc:
+            self._raise_websocket_disconnect_from_runtime_error(exc)
+
+    def _is_closed_websocket_runtime_error(self, exc: RuntimeError) -> bool:
+        message = str(exc)
+        return (
+            'Cannot call "send" once a close message has been sent.' in message
+            or 'WebSocket is not connected. Need to call "accept" first.' in message
+        )
+
+    def _raise_websocket_disconnect_from_runtime_error(self, exc: RuntimeError) -> None:
+        if not self._is_closed_websocket_runtime_error(exc):
+            raise exc
+        self._closed = True
+        raise WebSocketDisconnect() from exc
 
     async def _wait_for_counter(
         self,

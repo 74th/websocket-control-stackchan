@@ -99,6 +99,8 @@ class StackChanApp:
             if self._setup_fn:
                 await self._setup_fn(proxy)
 
+            await proxy.enable_auto_server_wakeword_detection()
+
             while not proxy.closed:
                 if not self._talk_session_fn:
                     await asyncio.sleep(0.05)

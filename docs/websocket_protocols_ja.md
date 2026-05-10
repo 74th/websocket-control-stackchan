@@ -28,6 +28,7 @@
 | 名前 | 方向 | 用途 |
 | --- | --- | --- |
 | `AudioPcm` | CoreS3 → Server | マイク音声 PCM ストリーム |
+| `ServerWwdPcm` | CoreS3 → Server | サーバーサイド wakeword 検出専用 PCM ストリーム |
 | `AudioWav` | Server → CoreS3 | TTS 音声 PCM ストリーム |
 | `StateCmd` | Server → CoreS3 | 状態遷移指示 |
 | `WakeWordEvt` | CoreS3 → Server | ウェイクワード検出通知 |
@@ -35,6 +36,8 @@
 | `SpeakDoneEvt` | CoreS3 → Server | 音声再生完了通知 |
 | `ServoCmd` | Server → CoreS3 | サーボ動作シーケンス指示 |
 | `ServoDoneEvt` | CoreS3 → Server | サーボ動作完了通知 |
+| `FirmwareMetadata` | CoreS3 → Server | クライアント能力通知 |
+| `ServerMetadata` | Server → CoreS3 | サーバー能力通知 |
 
 ### `MessageType` 一覧
 
@@ -61,6 +64,20 @@
   - 時間長は約 `125 ms`
 - 無音判定は平均絶対振幅 `<= 200` が 3 秒継続したときに発火します。
 - 停止時は未送信サンプルを `DATA` で flush してから `END` を送ります。
+
+## サーバーサイド wakeword 入力 `ServerWwdPcm`
+
+- 方向: CoreS3 → Server
+- フォーマット: PCM16LE / 16kHz / 1ch
+- シーケンス: `AudioPcmStart` → `AudioChunk` 複数回 → `AudioPcmEnd`
+- `kind`: `MESSAGE_KIND_SERVER_WWD_PCM`
+- body は `AudioPcm` と同じ `AudioPcmStart` / `AudioChunk` / `AudioPcmEnd` を使います。
+
+### 現行実装メモ
+
+- `StateCmd(ServerWwd)` を受けた CoreS3 は、この kind で uplink を開始します。
+- 無音 3 秒によるクライアント側自動終了は行いません。
+- サーバーはこの kind だけを server-side wakeword detector にルーティングします。
 
 ## スピーカ再生 `AudioWav`
 
@@ -97,12 +114,17 @@
 - `Listening`
 - `Thinking`
 - `Speaking`
+- `ServerWwd`
 
 ### 現行実装メモ
 
-- `proxy.listen()` 開始時に Server が `Listening` を指示します。
+- `proxy.listen()` 開始時に Server が `StateCmd(Listening)` を指示します。
+- サーバーサイド wakeword 検出開始時は `StateCmd(ServerWwd)` を指示します。
 - 音声 uplink の `END` を受けると、Server は `Thinking` を指示します。
 - `proxy.speak()` 完了後、Server は `Idle` を指示します。
+
+> [!NOTE]
+> `ServerWwd` の場合、CoreS3 は内部的にマイク uplink を開始しますが、表示は `Idle(Server-WWD)` にし、無音 3 秒による自動終了も行いません。
 
 ## ウェイクワード検出 `WakeWordEvt`
 
@@ -111,6 +133,30 @@
 - body: `WakeWordEvent { detected }`
 - `Idle` 中のウェイクワード検出をサーバー側に通知します。
 - REST API の `POST /v1/stackchan/{ip}/wakeword` は、このイベントをサーバー内部で擬似発火させます。
+
+## メタデータ交換 `FirmwareMetadata` / `ServerMetadata`
+
+WebSocket 接続後、能力情報を相互交換します。
+
+- CoreS3 → Server: `FirmwareMetadata`
+  - `has_device_wake_word`: クライアント側 wakeword 対応有無
+  - そのほか `device_type`, `display_width`, `display_height`, `has_led`, `servo_type`, `supports_audio_duplex`, `firmware_version`
+- Server → CoreS3: `ServerMetadata`
+  - `has_server_wake_word`: サーバー側 wakeword 対応有無
+  - `server_version`
+
+CoreS3 側は `has_server_wake_word=true` を受けると、デバイス側 wakeword を使わずにサーバー側検出モードで待機します（表示は `Idle(Server-WWD)`）。
+
+## サーバーサイド wakeword 検出フロー
+
+- 環境変数 `STACKCHAN_USE_WWD_WHISPER_SERVER=1` の場合、サーバーは `@app.setup()` 完了後と `Idle` 復帰後に自動でサーバーサイド wakeword 検出を開始します。
+- サーバーは `StateCmd(ServerWwd)` を送信して `MESSAGE_KIND_SERVER_WWD_PCM` のマイク uplink を受信します。
+- 受信した音声の直近 3 秒窓を 0.5 秒ごとに音声認識へ渡し、
+  定義キーワード（例: `スタクチャン`）を含むか判定します。
+- 各判定タイミングの認識結果はすべてログ出力されます。
+- キーワード検出時は内部 wakeword イベントを発火し、通常の `talk_session` フローに進みます。
+- 検出完了時（検出/未検出を問わず）は `StateCmd(Idle)` で待機状態に戻します。
+- この間、CoreS3 の画面表示は `Listening` ではなく `Idle(Server-WWD)` を維持します。
 
 ## 状態通知 `StateEvt`
 
@@ -124,6 +170,7 @@
 - `Listening`
 - `Thinking`
 - `Speaking`
+- `ServerWwd`
 
 - CoreS3 は状態遷移の entry hook で送信します。
 - WebSocket 切断中は `Disconnected` 状態になりますが、切断時は uplink 送信できないため `StateEvt` では通知されません。

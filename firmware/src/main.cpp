@@ -249,6 +249,28 @@ bool applyRemoteStateCommand(const stackchan_websocket_v1_StateCommand &command)
   case stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_SPEAKING:
     stateMachine.setState(StateMachine::Speaking);
     return true;
+  case stackchan_websocket_v1_StackchanState_STACKCHAN_STATE_SERVER_WWD:
+    if (!shouldUseServerWakeWord())
+    {
+      log_w("Server-side wakeword is not available");
+      return false;
+    }
+    if (stateMachine.getState() == StateMachine::ServerWwd)
+    {
+      return true;
+    }
+    if (stateMachine.getState() != StateMachine::Idle)
+    {
+      log_w("Cannot enter server-side wakeword from state=%u", static_cast<unsigned>(stateMachine.getState()));
+      return false;
+    }
+    if (!listening.beginWakeWordStreaming())
+    {
+      log_w("Failed to start server-side wakeword streaming");
+      return false;
+    }
+    stateMachine.setState(StateMachine::ServerWwd);
+    return true;
   default:
     log_w("Unknown remote state");
     return false;
@@ -323,6 +345,11 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
   case WStype_DISCONNECTED:
     // M5.Display.println("WS: disconnected");
     log_i("WS disconnected");
+    if (listening.isWakeWordStreaming())
+    {
+      log_i("Stopping server-side wakeword uplink because WS disconnected");
+      listening.endWakeWordStreaming();
+    }
     resetServerMetadata();
     stateMachine.setState(StateMachine::Disconnected);
     break;
@@ -513,6 +540,13 @@ void setup()
     listening.end();
   });
 
+  stateMachine.addStateEntryEvent(StateMachine::ServerWwd, [](StateMachine::State, StateMachine::State) {
+    notifyCurrentState(StateMachine::ServerWwd);
+  });
+  stateMachine.addStateExitEvent(StateMachine::ServerWwd, [](StateMachine::State, StateMachine::State) {
+    listening.endWakeWordStreaming();
+  });
+
   stateMachine.addStateEntryEvent(StateMachine::Speaking, [](StateMachine::State, StateMachine::State) {
     notifyCurrentState(StateMachine::Speaking);
     speaking.begin();
@@ -542,12 +576,19 @@ void loop()
   {
   case StateMachine::Idle:
     handleTouchWakeWordInput();
-    if (shouldUseDeviceWakeWord())
+    if (listening.isWakeWordStreaming())
+    {
+      listening.loop();
+    }
+    else if (shouldUseDeviceWakeWord())
     {
       wakeUpWord.loop();
     }
     break;
   case StateMachine::Listening:
+    listening.loop();
+    break;
+  case StateMachine::ServerWwd:
     listening.loop();
     break;
   case StateMachine::Thinking:

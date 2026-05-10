@@ -65,6 +65,8 @@ STACKCHAN_WHISPER_CLI_VAD_MODEL_PATH="/path/to/whisper.cpp/ggml-silero-v5.1.2.bi
 
 `STACKCHAN_WHISPER_SERVER_URL` に Whisper Server の推論エンドポイント URL をそのまま指定します。
 未設定時は `http://127.0.0.1:8080/inference` を利用します。
+`STACKCHAN_WHISPER_SERVER_LANGUAGE` を設定すると、その値を `language` パラメータとして各リクエストに含めます。未設定または空文字の場合は `language` を送信しません。
+また、`STACKCHAN_WHISPER_SERVER_PROMPT` を設定すると、whisper-server の各リクエストに `prompt` フィールドとして送信します。
 
 #### 例: Whisper.cppのwhisper-serverの設定
 
@@ -74,6 +76,8 @@ whisper.cpp/examples/server: https://github.com/ggml-org/whisper.cpp/tree/master
 STACKCHAN_USE_WHISPER_SERVER=1
 STACKCHAN_WHISPER_SERVER_URL="http://127.0.0.1:8080/inference"
 STACKCHAN_WHISPER_SERVER_MODEL=
+STACKCHAN_WHISPER_SERVER_LANGUAGE="ja"
+STACKCHAN_WHISPER_SERVER_PROMPT=""
 ```
 
 #### 例: [Lemonade](https://lemonade-server.ai/) を使う場合
@@ -84,6 +88,28 @@ Lemonade: https://lemonade-server.ai/
 STACKCHAN_USE_WHISPER_SERVER=1
 STACKCHAN_WHISPER_SERVER_URL=http://localhost:13305/api/v1/audio/transcriptions
 STACKCHAN_WHISPER_SERVER_MODEL=Whisper-Large-v3-Turbo
+STACKCHAN_WHISPER_SERVER_LANGUAGE="ja"
+STACKCHAN_WHISPER_SERVER_PROMPT=""
+```
+
+### (オプション) サーバーサイド wakeword 用 Whisper Server の設定
+
+サーバーサイド wakeword 検出を有効にするには、以下を設定します。
+
+- `STACKCHAN_USE_WWD_WHISPER_SERVER`: `1`
+- `STACKCHAN_WWD_WHISPER_SERVER_URL`: wakeword 検出専用 Whisper Server の推論エンドポイント URL
+- `STACKCHAN_WWD_WHISPER_SERVER_MODEL`: wakeword 検出専用に利用するモデル名
+- `STACKCHAN_WWD_WHISPER_SERVER_LANGUAGE`: wakeword 検出専用 Whisper Server リクエストへ渡す language
+- `STACKCHAN_WWD_WHISPER_SERVER_PROMPT`: wakeword 検出専用 Whisper Server リクエストへ渡す prompt
+
+通常の音声認識で使う `STACKCHAN_WHISPER_SERVER_URL` / `STACKCHAN_WHISPER_SERVER_MODEL` とは別設定です。
+
+```
+STACKCHAN_USE_WWD_WHISPER_SERVER=1
+STACKCHAN_WWD_WHISPER_SERVER_URL="http://127.0.0.1:8080/inference"
+STACKCHAN_WWD_WHISPER_SERVER_MODEL=
+STACKCHAN_WWD_WHISPER_SERVER_LANGUAGE="ja"
+STACKCHAN_WWD_WHISPER_SERVER_PROMPT="日本語で、スタックチャンという名前で、話しかけらるので、話しかけられたことを検出してください"
 ```
 
 ## 音声合成の設定
