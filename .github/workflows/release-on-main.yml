@@ -1,0 +1,145 @@
+name: Release On Main Or Test
+
+on:
+  push:
+    branches:
+      - main
+      - test
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Read release version from pyproject.toml
+        id: version
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          data = tomllib.loads(Path("pyproject.toml").read_text())
+          version = data["project"]["version"]
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              print(f"tag={version}", file=fh)
+
+          print(f"Release version: {version}")
+          PY
+
+      - name: Find previous version tag
+        id: previous
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_tag="${{ steps.version.outputs.tag }}"
+          previous_tag="$(git tag --list '[0-9]*' --sort=-version:refname | grep -Fxv "${current_tag}" | head -n 1 || true)"
+          echo "previous_tag=${previous_tag}" >> "$GITHUB_OUTPUT"
+          if [ -n "${previous_tag}" ]; then
+            echo "Previous tag: ${previous_tag}"
+          else
+            echo "Previous tag: none"
+          fi
+
+      - name: Create tag if needed
+        uses: actions/github-script@v7
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          TARGET_SHA: ${{ github.sha }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const tag = process.env.TAG;
+            const targetSha = process.env.TARGET_SHA;
+
+            try {
+              await github.rest.git.getRef({
+                owner,
+                repo,
+                ref: `tags/${tag}`,
+              });
+              core.notice(`Tag ${tag} already exists.`);
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+
+              await github.rest.git.createRef({
+                owner,
+                repo,
+                ref: `refs/tags/${tag}`,
+                sha: targetSha,
+              });
+              core.notice(`Created tag ${tag} at ${targetSha}.`);
+            }
+
+      - name: Create GitHub Release if needed
+        uses: actions/github-script@v7
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          PREVIOUS_TAG: ${{ steps.previous.outputs.previous_tag }}
+          TARGET_SHA: ${{ github.sha }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const tag = process.env.TAG;
+            const previousTag = process.env.PREVIOUS_TAG;
+            const targetSha = process.env.TARGET_SHA;
+
+            try {
+              const existing = await github.rest.repos.getReleaseByTag({
+                owner,
+                repo,
+                tag,
+              });
+              core.notice(`Release for ${tag} already exists: ${existing.data.html_url}`);
+              return;
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+            }
+
+            const notes = await github.request(
+              "POST /repos/{owner}/{repo}/releases/generate-notes",
+              {
+                owner,
+                repo,
+                tag_name: tag,
+                target_commitish: targetSha,
+                ...(previousTag ? { previous_tag_name: previousTag } : {}),
+              },
+            );
+
+            const release = await github.rest.repos.createRelease({
+              owner,
+              repo,
+              tag_name: tag,
+              target_commitish: targetSha,
+              name: tag,
+              body: notes.data.body,
+              draft: false,
+              prerelease: false,
+              generate_release_notes: false,
+            });
+
+            core.notice(`Created release ${release.data.html_url}`);
