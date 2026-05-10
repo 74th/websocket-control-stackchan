@@ -41,6 +41,12 @@ void Listening::init()
 
 void Listening::begin()
 {
+  if (M5.Speaker.isPlaying())
+  {
+    log_i("Stopping speaker playback before listening start");
+    M5.Speaker.stop();
+    delay(20);
+  }
   M5.Mic.begin();
   startStreaming();
 }

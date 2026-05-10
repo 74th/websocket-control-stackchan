@@ -92,6 +92,48 @@ def encode_audio_wav_end_message(seq: int) -> bytes:
     return message.SerializeToString()
 
 
+def encode_stored_file_start_message(
+    seq: int,
+    *,
+    file_id: str,
+    content_type: str,
+    total_size: int,
+    sample_rate: int = 0,
+    channels: int = 0,
+) -> bytes:
+    message = _new_message(
+        ws_pb2.MESSAGE_KIND_STORED_FILE,
+        ws_pb2.MESSAGE_TYPE_START,
+        seq,
+    )
+    message.stored_file_start.file_id = file_id
+    message.stored_file_start.content_type = content_type
+    message.stored_file_start.total_size = int(total_size)
+    message.stored_file_start.sample_rate = int(sample_rate)
+    message.stored_file_start.channels = int(channels)
+    return message.SerializeToString()
+
+
+def encode_stored_file_data_message(seq: int, chunk_bytes: bytes) -> bytes:
+    message = _new_message(
+        ws_pb2.MESSAGE_KIND_STORED_FILE,
+        ws_pb2.MESSAGE_TYPE_DATA,
+        seq,
+    )
+    message.stored_file_data.chunk_bytes = chunk_bytes
+    return message.SerializeToString()
+
+
+def encode_stored_file_end_message(seq: int) -> bytes:
+    message = _new_message(
+        ws_pb2.MESSAGE_KIND_STORED_FILE,
+        ws_pb2.MESSAGE_TYPE_END,
+        seq,
+    )
+    message.stored_file_end.SetInParent()
+    return message.SerializeToString()
+
+
 def encode_state_command_message(seq: int, state_id: int) -> bytes:
     message = _new_message(
         ws_pb2.MESSAGE_KIND_STATE_CMD,
@@ -181,6 +223,9 @@ __all__ = [
     "encode_audio_wav_start_message",
     "encode_server_metadata_message",
     "encode_servo_command_message",
+    "encode_stored_file_data_message",
+    "encode_stored_file_end_message",
+    "encode_stored_file_start_message",
     "encode_state_command_message",
     "parse_websocket_message",
     "ws_pb2",

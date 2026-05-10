@@ -31,6 +31,9 @@ message WebSocketMessage {
     ServoDoneEvent servo_done_evt = 35;
     FirmwareMetadata firmware_metadata = 36;
     ServerMetadata server_metadata = 37;
+    StoredFileStart stored_file_start = 40;
+    FileChunk stored_file_data = 41;
+    StoredFileEnd stored_file_end = 42;
   }
 }
 
@@ -46,6 +49,7 @@ enum MessageKind {
   MESSAGE_KIND_SERVO_DONE_EVT = 8;
   MESSAGE_KIND_FIRMWARE_METADATA = 9;
   MESSAGE_KIND_SERVER_METADATA = 10;
+  MESSAGE_KIND_STORED_FILE = 11;
 }
 
 enum MessageType {
@@ -97,6 +101,10 @@ message AudioChunk {
   bytes pcm_bytes = 1;
 }
 
+message FileChunk {
+  bytes chunk_bytes = 1;
+}
+
 message StateCommand {
   StackchanState state = 1;
 }
@@ -112,6 +120,16 @@ message StateEvent {
 message SpeakDoneEvent {
   bool done = 1;
 }
+
+message StoredFileStart {
+  string file_id = 1;
+  string content_type = 2;
+  uint32 total_size = 3;
+  uint32 sample_rate = 4;
+  uint32 channels = 5;
+}
+
+message StoredFileEnd {}
 
 message ServoCommandSequence {
   repeated ServoCommand commands = 1;

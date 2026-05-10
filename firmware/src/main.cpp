@@ -24,6 +24,7 @@
 #include "../include/wake_up_word.hpp"
 #include "../include/display.hpp"
 #include "../include/servo.hpp"
+#include "../include/stored_files.hpp"
 
 //////////////////// 設定 ////////////////////
 const char *WIFI_SSID = WIFI_SSID_H;
@@ -32,6 +33,11 @@ const char *SERVER_HOST = SERVER_HOST_H;
 const int SERVER_PORT = SERVER_PORT_H;
 const char *SERVER_PATH = SERVER_PATH_H; // WebSocket エンドポイント
 const int SAMPLE_RATE = 16000;           // 16kHz モノラル
+const int SPEAKER_OUTPUT_SAMPLE_RATE = 24000;
+const int SPEAKER_VOLUME = 160;          // 0-255
+const size_t SPEAKER_DMA_BUF_LEN = 512;
+const size_t SPEAKER_DMA_BUF_COUNT = 12;
+const uint8_t SPEAKER_TASK_PRIORITY = 3;
 /////////////////////////////////////////////
 
 StateMachine stateMachine;
@@ -42,6 +48,7 @@ static Listening listening(wsClient, stateMachine, SAMPLE_RATE);
 static WakeUpWord wakeUpWord(stateMachine, SAMPLE_RATE);
 static Display display(stateMachine);
 static BodyServo servo;
+static StoredFiles storedFiles;
 
 // Protocol types are defined in include/protocols.hpp
 namespace
@@ -51,8 +58,12 @@ uint32_t g_last_comm_ms = 0;
 uint32_t g_last_local_wake_word_ms = 0;
 constexpr uint32_t kCommTimeoutMs = 60000;
 constexpr uint32_t kLocalWakeWordCooldownMs = 750;
+constexpr const char *kWakeWordDetectedSoundFileId = "wakeword-detected-sound";
 stackchan_websocket_v1_WebSocketMessage g_tx_message = stackchan_websocket_v1_WebSocketMessage_init_zero;
 stackchan_websocket_v1_WebSocketMessage g_rx_message = stackchan_websocket_v1_WebSocketMessage_init_zero;
+bool g_pending_device_wake_word_feedback = false;
+bool g_feedback_sound_playing = false;
+bool g_notify_after_feedback_sound = false;
 
 void markCommunicationActive()
 {
@@ -154,6 +165,106 @@ void triggerLocalWakeWord(const char *source)
   g_last_local_wake_word_ms = millis();
   log_i("Local wake-word trigger from %s", source);
   notifyWakeWordDetected();
+}
+
+void clearFeedbackSoundState(bool stopPlayback)
+{
+  g_pending_device_wake_word_feedback = false;
+  g_notify_after_feedback_sound = false;
+  if (stopPlayback && g_feedback_sound_playing && M5.Speaker.isPlaying())
+  {
+    M5.Speaker.stop();
+  }
+  g_feedback_sound_playing = false;
+}
+
+bool startWakeWordFeedbackSoundPlayback()
+{
+  StoredFileView sound;
+  if (!storedFiles.getActivePcmFile(kWakeWordDetectedSoundFileId, sound))
+  {
+    log_w("Wake-word feedback sound is not available for current session id=%s", kWakeWordDetectedSoundFileId);
+    return false;
+  }
+
+  if (sound.size == 0 || (sound.size % sizeof(int16_t)) != 0)
+  {
+    log_w("Stored wake-word sound has invalid size=%u", static_cast<unsigned>(sound.size));
+    return false;
+  }
+
+  if (sound.sample_rate == 0 || sound.channels == 0)
+  {
+    log_w("Stored wake-word sound missing format sample_rate=%u channels=%u",
+          static_cast<unsigned>(sound.sample_rate),
+          static_cast<unsigned>(sound.channels));
+    return false;
+  }
+
+  wakeUpWord.end();
+  if (M5.Speaker.isPlaying())
+  {
+    M5.Speaker.stop();
+  }
+
+  const int16_t *samples = reinterpret_cast<const int16_t *>(sound.data);
+  size_t sample_len = sound.size / sizeof(int16_t);
+  log_i("Starting wake-word feedback playback sample_len=%u sample_rate=%u channels=%u",
+        static_cast<unsigned>(sample_len),
+        static_cast<unsigned>(sound.sample_rate),
+        static_cast<unsigned>(sound.channels));
+  M5.Speaker.playRaw(samples, sample_len, sound.sample_rate, sound.channels > 1, 1, 0);
+  g_feedback_sound_playing = true;
+  log_i("Playing stored wake-word sound bytes=%u", static_cast<unsigned>(sound.size));
+  return true;
+}
+
+void finishWakeWordFeedbackSoundPlayback()
+{
+  log_i("Wake-word feedback playback finished notify_after=%u",
+        static_cast<unsigned>(g_notify_after_feedback_sound));
+  g_feedback_sound_playing = false;
+  if (g_notify_after_feedback_sound)
+  {
+    g_notify_after_feedback_sound = false;
+    notifyWakeWordDetected();
+  }
+
+  if (stateMachine.getState() == StateMachine::Idle && shouldUseDeviceWakeWord())
+  {
+    wakeUpWord.begin();
+  }
+}
+
+void processPendingDeviceWakeWordFeedback()
+{
+  if (!g_pending_device_wake_word_feedback || stateMachine.getState() != StateMachine::Idle)
+  {
+    return;
+  }
+
+  g_pending_device_wake_word_feedback = false;
+  if (startWakeWordFeedbackSoundPlayback())
+  {
+    g_notify_after_feedback_sound = true;
+    log_i("Wake-word feedback playback scheduled before uplink event");
+    return;
+  }
+
+  log_w("Wake-word feedback playback skipped; sending WakeWordEvt immediately");
+  notifyWakeWordDetected();
+}
+
+void handleDeviceWakeWordDetected()
+{
+  if (!canTriggerLocalWakeWord())
+  {
+    return;
+  }
+
+  g_last_local_wake_word_ms = millis();
+  log_i("Local wake-word trigger from device wake word");
+  g_pending_device_wake_word_feedback = true;
 }
 
 void handleTouchWakeWordInput()
@@ -324,11 +435,15 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
     // M5.Display.println("WS: disconnected");
     log_i("WS disconnected");
     resetServerMetadata();
+    storedFiles.resetSession();
+    clearFeedbackSoundState(true);
     stateMachine.setState(StateMachine::Disconnected);
     break;
   case WStype_CONNECTED:
     // M5.Display.printf("WS: connected %s\n", SERVER_PATH);
     log_i("WS connected to %s", SERVER_PATH);
+    storedFiles.resetSession();
+    clearFeedbackSoundState(true);
     if (stateMachine.getState() == StateMachine::Disconnected)
     {
       stateMachine.setState(StateMachine::Idle);
@@ -427,6 +542,49 @@ void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
         log_w("ServerMetadata protobuf body mismatch type=%u body=%u", (unsigned)rx.message_type, (unsigned)rx.which_body);
       }
       break;
+    case stackchan_websocket_v1_MessageKind_MESSAGE_KIND_STORED_FILE:
+      if (rx.message_type == stackchan_websocket_v1_MessageType_MESSAGE_TYPE_START &&
+          rx.which_body == stackchan_websocket_v1_WebSocketMessage_stored_file_start_tag)
+      {
+        log_i("Received stored file start id=%s seq=%u size=%u sample_rate=%u channels=%u",
+              rx.body.stored_file_start.file_id,
+              static_cast<unsigned>(rx.seq),
+              static_cast<unsigned>(rx.body.stored_file_start.total_size),
+              static_cast<unsigned>(rx.body.stored_file_start.sample_rate),
+              static_cast<unsigned>(rx.body.stored_file_start.channels));
+        if (!storedFiles.handleStart(rx.seq, rx.body.stored_file_start))
+        {
+          log_w("Stored file start rejected");
+        }
+      }
+      else if (rx.message_type == stackchan_websocket_v1_MessageType_MESSAGE_TYPE_DATA &&
+               rx.which_body == stackchan_websocket_v1_WebSocketMessage_stored_file_data_tag)
+      {
+        log_i("Received stored file chunk seq=%u bytes=%u",
+              static_cast<unsigned>(rx.seq),
+              static_cast<unsigned>(getProtoFileChunkSize(rx.body.stored_file_data)));
+        if (!storedFiles.handleData(
+                rx.seq,
+                getProtoFileChunkBytes(rx.body.stored_file_data),
+                getProtoFileChunkSize(rx.body.stored_file_data)))
+        {
+          log_w("Stored file data rejected");
+        }
+      }
+      else if (rx.message_type == stackchan_websocket_v1_MessageType_MESSAGE_TYPE_END &&
+               rx.which_body == stackchan_websocket_v1_WebSocketMessage_stored_file_end_tag)
+      {
+        log_i("Received stored file end seq=%u", static_cast<unsigned>(rx.seq));
+        if (!storedFiles.handleEnd(rx.seq))
+        {
+          log_w("Stored file end rejected");
+        }
+      }
+      else
+      {
+        log_w("StoredFile protobuf body mismatch type=%u body=%u", (unsigned)rx.message_type, (unsigned)rx.which_body);
+      }
+      break;
     default:
       // M5.Display.printf("WS bin kind=%u len=%d\n", (unsigned)rx.kind, (int)length);
       break;
@@ -459,6 +617,18 @@ void setup()
   M5.begin(cfg);
 #endif
 
+  auto spk_cfg = M5.Speaker.config();
+  spk_cfg.sample_rate = SPEAKER_OUTPUT_SAMPLE_RATE;
+  spk_cfg.dma_buf_len = SPEAKER_DMA_BUF_LEN;
+  spk_cfg.dma_buf_count = SPEAKER_DMA_BUF_COUNT;
+  spk_cfg.task_priority = SPEAKER_TASK_PRIORITY;
+  M5.Speaker.config(spk_cfg);
+  log_i("Speaker config sample_rate=%u dma_buf_len=%u dma_buf_count=%u task_priority=%u",
+        static_cast<unsigned>(spk_cfg.sample_rate),
+        static_cast<unsigned>(spk_cfg.dma_buf_len),
+        static_cast<unsigned>(spk_cfg.dma_buf_count),
+        static_cast<unsigned>(spk_cfg.task_priority));
+
   auto mic_cfg = M5.Mic.config();
   mic_cfg.sample_rate = SAMPLE_RATE;
   mic_cfg.dma_buf_len = 256;
@@ -468,6 +638,7 @@ void setup()
 
   listening.init();
   speaking.init();
+  storedFiles.init();
   speaking.setSpeakFinishedCallback([]() {
     notifySpeakDone();
   });
@@ -477,7 +648,7 @@ void setup()
   });
   wakeUpWord.init();
   wakeUpWord.setWakeWordDetectedCallback([]() {
-    notifyWakeWordDetected();
+    handleDeviceWakeWordDetected();
   });
   display.init();
   initializeFirmwareMetadata();
@@ -485,7 +656,7 @@ void setup()
   connectWiFi();
 
   // Mic/Speaking setup
-  M5.Speaker.setVolume(200); // 0-255
+  M5.Speaker.setVolume(SPEAKER_VOLUME); // 0-255
 
   wsClient.begin(SERVER_HOST, SERVER_PORT, SERVER_PATH);
   markCommunicationActive();
@@ -507,6 +678,7 @@ void setup()
 
   stateMachine.addStateEntryEvent(StateMachine::Listening, [](StateMachine::State, StateMachine::State) {
     notifyCurrentState(StateMachine::Listening);
+    clearFeedbackSoundState(true);
     listening.begin();
   });
   stateMachine.addStateExitEvent(StateMachine::Listening, [](StateMachine::State, StateMachine::State) {
@@ -541,11 +713,21 @@ void loop()
   switch (current)
   {
   case StateMachine::Idle:
+    if (g_feedback_sound_playing)
+    {
+      if (!M5.Speaker.isPlaying())
+      {
+        finishWakeWordFeedbackSoundPlayback();
+      }
+      break;
+    }
+
     handleTouchWakeWordInput();
     if (shouldUseDeviceWakeWord())
     {
       wakeUpWord.loop();
     }
+    processPendingDeviceWakeWordFeedback();
     break;
   case StateMachine::Listening:
     listening.loop();

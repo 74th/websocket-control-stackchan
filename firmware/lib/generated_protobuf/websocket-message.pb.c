@@ -24,6 +24,9 @@ PB_BIND(stackchan_websocket_v1_AudioWavEnd, stackchan_websocket_v1_AudioWavEnd, 
 PB_BIND(stackchan_websocket_v1_AudioChunk, stackchan_websocket_v1_AudioChunk, 4)
 
 
+PB_BIND(stackchan_websocket_v1_FileChunk, stackchan_websocket_v1_FileChunk, 4)
+
+
 PB_BIND(stackchan_websocket_v1_StateCommand, stackchan_websocket_v1_StateCommand, AUTO)
 
 
@@ -34,6 +37,12 @@ PB_BIND(stackchan_websocket_v1_StateEvent, stackchan_websocket_v1_StateEvent, AU
 
 
 PB_BIND(stackchan_websocket_v1_SpeakDoneEvent, stackchan_websocket_v1_SpeakDoneEvent, AUTO)
+
+
+PB_BIND(stackchan_websocket_v1_StoredFileStart, stackchan_websocket_v1_StoredFileStart, AUTO)
+
+
+PB_BIND(stackchan_websocket_v1_StoredFileEnd, stackchan_websocket_v1_StoredFileEnd, AUTO)
 
 
 PB_BIND(stackchan_websocket_v1_ServoCommandSequence, stackchan_websocket_v1_ServoCommandSequence, 2)
