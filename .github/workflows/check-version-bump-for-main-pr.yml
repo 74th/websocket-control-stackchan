@@ -1,0 +1,75 @@
+name: Check Version Bump For Main Or Test PR
+
+on:
+  pull_request:
+    branches:
+      - main
+      - test
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - edited
+      - ready_for_review
+
+permissions:
+  contents: read
+
+jobs:
+  check-version-bump:
+    if: github.head_ref == 'develop'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Compare pyproject.toml versions
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          git fetch origin "${BASE_REF}" --depth=1
+          python - <<'PY'
+          import os
+          import subprocess
+          import tomllib
+          from pathlib import Path
+
+          def read_version(pyproject_text: str) -> str:
+              data = tomllib.loads(pyproject_text)
+              version = data.get("project", {}).get("version")
+              if not version:
+                  raise SystemExit("project.version not found in pyproject.toml")
+              return version
+
+          base_ref = os.environ["BASE_REF"]
+          head_ref = os.environ["HEAD_REF"]
+          base_pyproject = subprocess.check_output(
+              ["git", "show", f"origin/{base_ref}:pyproject.toml"],
+              text=True,
+          )
+          head_pyproject = Path("pyproject.toml").read_text()
+
+          base_version = read_version(base_pyproject)
+          head_version = read_version(head_pyproject)
+
+          print(f"Base branch version ({base_ref}): {base_version}")
+          print(f"PR branch version ({head_ref}): {head_version}")
+
+          if base_version == head_version:
+              print(
+                  f"::error file=pyproject.toml,title=Version bump required::"
+                  f"develop -> {base_ref} PR must update [project].version in pyproject.toml. "
+                  f"{base_ref} is {base_version} and this PR is still {head_version}."
+              )
+              raise SystemExit(1)
+          PY
