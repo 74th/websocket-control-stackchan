@@ -1,4 +1,7 @@
 stackchan.websocket.v1.AudioChunk.pcm_bytes max_size:4096
+stackchan.websocket.v1.FileChunk.chunk_bytes max_size:4096
 stackchan.websocket.v1.ServoCommandSequence.commands max_count:255
 stackchan.websocket.v1.FirmwareMetadata.firmware_version max_length:63
 stackchan.websocket.v1.ServerMetadata.server_version max_length:63
+stackchan.websocket.v1.StoredFileStart.file_id max_length:63
+stackchan.websocket.v1.StoredFileStart.content_type max_length:63

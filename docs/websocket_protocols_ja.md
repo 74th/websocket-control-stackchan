@@ -35,6 +35,7 @@
 | `SpeakDoneEvt` | CoreS3 → Server | 音声再生完了通知 |
 | `ServoCmd` | Server → CoreS3 | サーボ動作シーケンス指示 |
 | `ServoDoneEvt` | CoreS3 → Server | サーボ動作完了通知 |
+| `StoredFile` | Server → CoreS3 | SPIFFS 保存用の汎用ファイル転送 |
 
 ### `MessageType` 一覧
 
@@ -135,6 +136,29 @@
 - body: `SpeakDoneEvent { done }`
 - CoreS3 側の音声再生完了を通知します。
 - Server はこの通知を待って `proxy.speak()` を完了させます。
+
+## 保存ファイル転送 `StoredFile`
+
+- 方向: Server → CoreS3
+- 用途: バイナリファイルを WebSocket 経由で配布し、CoreS3 側で SPIFFS に保存するための汎用転送です。
+- 1 転送の流れは `StoredFileStart` → `FileChunk` 複数回 → `StoredFileEnd` です。
+
+### body 形式
+
+| messageType | body |
+| --- | --- |
+| `START` | `StoredFileStart { file_id, content_type, total_size, sample_rate, channels }` |
+| `DATA` | `FileChunk { chunk_bytes }` |
+| `END` | `StoredFileEnd {}` |
+
+### 現行実装メモ
+
+- `file_id` はファイルの論理名です。現在の実装では `wakeword-detected-sound` が WakeUpWord 検出音に使われます。
+- `content_type` は現在 `audio/pcm` をサポートします。
+- `sample_rate` / `channels` は PCM 再生用の追加メタデータです。
+- CoreS3 は受信完了後に SPIFFS へ保存し、**その WebSocket 接続中に受信したファイルだけ** を有効化します。
+- 再接続後にサーバーが同じファイルを再送しない場合、SPIFFS に過去データが残っていても再生には使いません。
+- WakeUpWord 検出時は、該当サウンドが現在の接続で有効になっている場合のみローカル再生してから `WakeWordEvt` を送信します。
 
 ## サーボ動作指示 `ServoCmd`
 

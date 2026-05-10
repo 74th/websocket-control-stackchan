@@ -21,11 +21,18 @@ from .protobuf_ws import (
     encode_server_metadata_message,
     encode_servo_command_message,
     encode_state_command_message,
+    encode_stored_file_data_message,
+    encode_stored_file_end_message,
+    encode_stored_file_start_message,
     parse_websocket_message,
 )
 from .speak import SpeakHandler
 from .static import LISTEN_AUDIO_FORMAT
 from .types import SpeechRecognizer, SpeechSynthesizer
+from .wakeword_sound import (
+    WAKEWORD_SOUND_PATH_ENV_VAR,
+    load_wake_word_detected_sound_from_env,
+)
 
 logger = getLogger(__name__)
 
@@ -35,6 +42,7 @@ _BASE_DIR = Path(__file__).resolve().parent
 _RECORDINGS_DIR = _BASE_DIR / "recordings"
 
 _DOWN_WAV_CHUNK = 4096  # bytes per WebSocket frame for synthesized audio (raw PCM)
+_DOWN_FILE_CHUNK = 4096  # bytes per WebSocket frame for stored-file transfer
 _DOWN_SEGMENT_MILLIS = (
     2000  # duration of a single START-DATA-END segment in milliseconds
 )
@@ -190,6 +198,81 @@ class WsProxy:
 
     async def send_state_command(self, state_id: int | FirmwareState) -> None:
         await self._send_state_command(state_id)
+
+    async def send_file(
+        self,
+        *,
+        file_id: str,
+        content_type: str,
+        payload: bytes,
+        sample_rate: int = 0,
+        channels: int = 0,
+    ) -> None:
+        if not file_id:
+            raise ValueError("file_id must not be empty")
+        if not content_type:
+            raise ValueError("content_type must not be empty")
+
+        logger.info(
+            "Sending stored file id=%s type=%s bytes=%d sample_rate=%d channels=%d",
+            file_id,
+            content_type,
+            len(payload),
+            sample_rate,
+            channels,
+        )
+        await self.ws.send_bytes(
+            encode_stored_file_start_message(
+                self._next_down_seq(),
+                file_id=file_id,
+                content_type=content_type,
+                total_size=len(payload),
+                sample_rate=sample_rate,
+                channels=channels,
+            )
+        )
+        offset = 0
+        chunk_count = 0
+        while offset < len(payload):
+            chunk = payload[offset : offset + _DOWN_FILE_CHUNK]
+            await self.ws.send_bytes(
+                encode_stored_file_data_message(self._next_down_seq(), chunk)
+            )
+            offset += len(chunk)
+            chunk_count += 1
+        logger.info(
+            "Stored file payload sent id=%s chunks=%d bytes=%d",
+            file_id,
+            chunk_count,
+            len(payload),
+        )
+        await self.ws.send_bytes(encode_stored_file_end_message(self._next_down_seq()))
+        logger.info("Stored file transfer completed id=%s", file_id)
+
+    async def send_default_wake_word_sound(self) -> None:
+        sound = load_wake_word_detected_sound_from_env()
+        if sound is None:
+            logger.info(
+                "Wake-word sound upload skipped because %s is not set",
+                WAKEWORD_SOUND_PATH_ENV_VAR,
+            )
+            return
+
+        logger.info(
+            "Uploading wake-word sound id=%s sample_rate=%d channels=%d bytes=%d",
+            sound.file_id,
+            sound.sample_rate,
+            sound.channels,
+            len(sound.payload),
+        )
+
+        await self.send_file(
+            file_id=sound.file_id,
+            content_type=sound.content_type,
+            payload=sound.payload,
+            sample_rate=sound.sample_rate,
+            channels=sound.channels,
+        )
 
     async def reset_state(self) -> None:
         await self.send_state_command(FirmwareState.IDLE)

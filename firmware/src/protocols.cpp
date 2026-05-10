@@ -33,6 +33,34 @@ size_t getProtoAudioChunkSize(const stackchan_websocket_v1_AudioChunk &chunk)
 	return chunk.pcm_bytes.size;
 }
 
+bool setProtoFileChunk(
+	stackchan_websocket_v1_FileChunk &chunk,
+	const uint8_t *data,
+	size_t data_len)
+{
+	if (data_len > kProtoFileChunkMaxBytes)
+	{
+		return false;
+	}
+
+	chunk.chunk_bytes.size = static_cast<pb_size_t>(data_len);
+	if (data_len > 0 && data != nullptr)
+	{
+		memcpy(chunk.chunk_bytes.bytes, data, data_len);
+	}
+	return true;
+}
+
+const uint8_t *getProtoFileChunkBytes(const stackchan_websocket_v1_FileChunk &chunk)
+{
+	return chunk.chunk_bytes.bytes;
+}
+
+size_t getProtoFileChunkSize(const stackchan_websocket_v1_FileChunk &chunk)
+{
+	return chunk.chunk_bytes.size;
+}
+
 bool encodeWebSocketMessage(
 	const stackchan_websocket_v1_WebSocketMessage &message,
 	std::vector<uint8_t> &encoded)

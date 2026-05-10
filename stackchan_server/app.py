@@ -29,9 +29,12 @@ class StackChanApp:
         self,
         speech_recognizer: SpeechRecognizer | None = None,
         speech_synthesizer: SpeechSynthesizer | None = None,
+        *,
+        send_wakeword_sound_on_connect: bool = True,
     ) -> None:
         self.speech_recognizer = speech_recognizer or create_speech_recognizer()
         self.speech_synthesizer = speech_synthesizer or create_speech_synthesizer()
+        self.send_wakeword_sound_on_connect = send_wakeword_sound_on_connect
         self.fastapi = FastAPI(title="StackChan WebSocket Server")
         self._setup_fn: Optional[Callable[[WsProxy], Awaitable[None]]] = None
         self._talk_session_fn: Optional[Callable[[WsProxy], Awaitable[None]]] = None
@@ -96,6 +99,9 @@ class StackChanApp:
             await existing.close()
 
         try:
+            if self.send_wakeword_sound_on_connect:
+                await proxy.send_default_wake_word_sound()
+
             if self._setup_fn:
                 await self._setup_fn(proxy)
 

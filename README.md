@@ -88,6 +88,14 @@ async def talk_session(proxy: WsProxy):
             await proxy.speak(resp.text)
 ```
 
+`StackChanApp()` は既定で、WebSocket 接続直後に WakeWord 検出通知音をデバイスへ送信しようとします。
+送信する音は環境変数 `STACKCHAN_WAKEWORD_SOUND_PATH` で指定した WAV ファイルから読み込みます。
+読み込んだ WAV は送信前に 16-bit PCM / 24kHz / mono へ正規化されます。
+さらに短い通知音でも再生しやすいよう、送信前に前後へ短い無音を付与し、最小再生長を確保します。
+この値が未設定なら通知音は送信されません。
+送信された音はデバイス側で SPIFFS に保存され、WakeWord 検出時にローカル再生されます。
+接続時送信の機能自体を無効化したい場合は `StackChanApp(send_wakeword_sound_on_connect=False)` を使ってください。
+
 ## セットアップ
 
 以下を確認ください。
@@ -101,7 +109,7 @@ async def talk_session(proxy: WsProxy):
     - M5Stack CoreS3(SKU:K128, K128-Lite, K128-SE)
     - M5Stack Atom S3R(SKU:C126) + Atomic Echo Base(SKU:A149)
     - M5Stack公式StackChan(SKU:K151)
-    <!-- - M5Stack Atom EchoS3R -->
+    - M5Stack Atom EchoS3R
 - サーボ（なくても動作します）:
     - Tower Pro SG90
     - FEETECH SCS0009
