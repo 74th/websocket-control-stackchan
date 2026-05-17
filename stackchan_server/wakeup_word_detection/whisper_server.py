@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import unicodedata
 from logging import getLogger
+from typing import Any
 
 from pydantic import Field
+from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings
 
 from ..speech_recognition.whisper_server import (
@@ -25,13 +27,23 @@ class WakeWordDetectionTimeout(WakeWordDetectionError):
 
 
 class WhisperServerWakeWordDetectorConfig(BaseSettings):
-    keywords: list[str] = Field(default_factory=lambda: ["ハイスタックチャン"])
+    keywords: list[str] = ["スタックチャン"]
     window_seconds: float = 3.0
+    min_buffer_seconds: float = 1.0
     interval_seconds: float = 0.5
     timeout_seconds: float = 300.0
+    ignore_detected: str = ""
+
+    def prepare_field_value(
+        self, field_name: str, field: FieldInfo, value: Any, value_is_complex: bool
+    ) -> Any:
+        if field_name == 'keywords':
+            return [x.strip() for x in value.split(',') if x.strip()]
+        return value
 
     class Config:
-        env_prefix = "STACKCHAN_WWD_"
+        env_prefix = "STACKCHAN_WWD_WHISPER_SERVER_"
+
 
 
 class WhisperServerWakeWordSpeechToTextConfig(WhisperServerSpeechToTextConfig):
@@ -45,11 +57,11 @@ class WhisperServerWakeWordDetector:
         *,
         recognizer: WhisperServerSpeechToText | None = None,
         config: WhisperServerWakeWordDetectorConfig | None = None,
+        recognizer_config: WhisperServerWakeWordSpeechToTextConfig | None = None,
     ) -> None:
         self.config = config or WhisperServerWakeWordDetectorConfig()
-        self.recognizer = recognizer or WhisperServerSpeechToText(
-            config=WhisperServerWakeWordSpeechToTextConfig()
-        )
+        self.recognizer_config = recognizer_config or WhisperServerWakeWordSpeechToTextConfig()
+        self.recognizer = recognizer or WhisperServerSpeechToText(config=self.recognizer_config)
         self._pcm_buffer = bytearray()
         self._running = False
         self._detected = False
@@ -112,9 +124,15 @@ class WhisperServerWakeWordDetector:
                 len(payload),
             )
             return
+        if not payload:
+            return
 
         self._pcm_buffer.extend(payload)
         self._truncate_buffer_to_window()
+
+        buffered_seconds = self._pcm_duration_seconds(len(self._pcm_buffer))
+        if buffered_seconds < self.config.min_buffer_seconds:
+            return
 
         loop = asyncio.get_running_loop()
         now = loop.time()
@@ -171,6 +189,9 @@ class WhisperServerWakeWordDetector:
         if not pcm_bytes:
             return
 
+        if self._pcm_duration_seconds(len(pcm_bytes)) < self.config.min_buffer_seconds:
+            return
+
         try:
             async with self._lock:
                 transcript = await self.recognizer.transcribe(pcm_bytes)
@@ -192,8 +213,8 @@ class WhisperServerWakeWordDetector:
         if not normalized_transcript:
             return False
 
-        if self.recognizer.config.prompt in normalized_transcript:
-            # If the prompt is included in the transcript, it may indicate that the transcription is not accurate or that the model is confused. In this case, we choose to ignore the transcript to avoid false positives.
+        if self.config.ignore_detected and self.config.ignore_detected in normalized_transcript:
+            # If the ignore_detected phrase is included in the transcript, it may indicate that the transcription is not accurate or that the model is confused. In this case, we choose to ignore the transcript to avoid false positives.
             return False
         for keyword in self.config.keywords:
             normalized_keyword = _normalize_text(keyword)
@@ -202,14 +223,23 @@ class WhisperServerWakeWordDetector:
         return False
 
     def _truncate_buffer_to_window(self) -> None:
-        sample_rate = LISTEN_AUDIO_FORMAT.sample_rate_hz
-        channels = LISTEN_AUDIO_FORMAT.channels
-        sample_width = LISTEN_AUDIO_FORMAT.sample_width
-        bytes_per_second = sample_rate * channels * sample_width
+        bytes_per_second = self._pcm_bytes_per_second()
         max_bytes = max(1, int(bytes_per_second * self.config.window_seconds))
         if len(self._pcm_buffer) <= max_bytes:
             return
         del self._pcm_buffer[: len(self._pcm_buffer) - max_bytes]
+
+    def _pcm_bytes_per_second(self) -> int:
+        sample_rate = LISTEN_AUDIO_FORMAT.sample_rate_hz
+        channels = LISTEN_AUDIO_FORMAT.channels
+        sample_width = LISTEN_AUDIO_FORMAT.sample_width
+        return sample_rate * channels * sample_width
+
+    def _pcm_duration_seconds(self, pcm_byte_length: int) -> float:
+        bytes_per_second = self._pcm_bytes_per_second()
+        if bytes_per_second <= 0:
+            return 0.0
+        return pcm_byte_length / float(bytes_per_second)
 
 
 def _normalize_text(text: str) -> str:

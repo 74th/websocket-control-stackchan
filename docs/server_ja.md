@@ -98,19 +98,31 @@ STACKCHAN_WHISPER_SERVER_PROMPT=""
 
 - `STACKCHAN_USE_WWD_WHISPER_SERVER`: `1`
 - `STACKCHAN_WWD_WHISPER_SERVER_URL`: wakeword 検出専用 Whisper Server の推論エンドポイント URL
+- `STACKCHAN_WWD_WHISPER_SERVER_KEYWORDS`: wakeword として検出するキーワード一覧。JSON 配列文字列で指定します
 - `STACKCHAN_WWD_WHISPER_SERVER_MODEL`: wakeword 検出専用に利用するモデル名
 - `STACKCHAN_WWD_WHISPER_SERVER_LANGUAGE`: wakeword 検出専用 Whisper Server リクエストへ渡す language
 - `STACKCHAN_WWD_WHISPER_SERVER_PROMPT`: wakeword 検出専用 Whisper Server リクエストへ渡す prompt
+- `STACKCHAN_WWD_WHISPER_SERVER_IGNORE_DETECTED`: 認識結果にこの文字列が含まれる場合は誤検出として無視します
 
 通常の音声認識で使う `STACKCHAN_WHISPER_SERVER_URL` / `STACKCHAN_WHISPER_SERVER_MODEL` とは別設定です。
 
+Whisper 系モデルは無音時や短い音声で、`prompt` に与えた文言をそのまま返すことがあります。
+その場合に wakeword を誤検出しないよう、`STACKCHAN_WWD_WHISPER_SERVER_IGNORE_DETECTED` に `prompt` と重なるフレーズを指定しておくと安全です。
+
+### 例: 「ハイスタックチャン」で呼びかける設定
+
 ```
 STACKCHAN_USE_WWD_WHISPER_SERVER=1
-STACKCHAN_WWD_WHISPER_SERVER_URL="http://127.0.0.1:8080/inference"
+STACKCHAN_WWD_WHISPER_SERVER_URL=http://localhost:8431/inference
+STACKCHAN_WWD_WHISPER_SERVER_KEYWORDS='["ハイスタックチャン"]'
 STACKCHAN_WWD_WHISPER_SERVER_MODEL=
 STACKCHAN_WWD_WHISPER_SERVER_LANGUAGE="ja"
-STACKCHAN_WWD_WHISPER_SERVER_PROMPT="日本語で、スタックチャンという名前で、話しかけらるので、話しかけられたことを検出してください"
+STACKCHAN_WWD_WHISPER_SERVER_PROMPT="ハイスタックチャンと言ってください。どうぞ。"
+STACKCHAN_WWD_WHISPER_SERVER_IGNORE_DETECTED="ハイスタックチャンと言ってください"
 ```
+
+この設定では、サーバーサイド wakeword 検出が `ハイスタックチャン` を含む認識結果を検出対象にします。
+一方で、無音時などに whisper-server が `prompt` の一部である `ハイスタックチャンと言ってください` を返した場合は、誤検出として無視します。
 
 ## 音声合成の設定
 

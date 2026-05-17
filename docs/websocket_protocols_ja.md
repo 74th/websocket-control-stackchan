@@ -151,9 +151,10 @@ CoreS3 側は `has_server_wake_word=true` を受けると、デバイス側 wake
 
 - 環境変数 `STACKCHAN_USE_WWD_WHISPER_SERVER=1` の場合、サーバーは `@app.setup()` 完了後と `Idle` 復帰後に自動でサーバーサイド wakeword 検出を開始します。
 - サーバーは `StateCmd(ServerWwd)` を送信して `MESSAGE_KIND_SERVER_WWD_PCM` のマイク uplink を受信します。
-- 受信した音声の直近 3 秒窓を 0.5 秒ごとに音声認識へ渡し、
+- 受信した音声は既定で 1.0 秒以上たまってから、直近 3 秒窓を 0.5 秒ごとに音声認識へ渡し、
   定義キーワード（例: `スタクチャン`）を含むか判定します。
 - 各判定タイミングの認識結果はすべてログ出力されます。
+- `prompt` を設定した場合、無音時などにモデルが `prompt` と同じ文言を返すことがあります。`STACKCHAN_WWD_WHISPER_SERVER_IGNORE_DETECTED` に除外フレーズを設定すると、その認識結果は誤検出として無視します。
 - キーワード検出時は内部 wakeword イベントを発火し、通常の `talk_session` フローに進みます。
 - 検出完了時（検出/未検出を問わず）は `StateCmd(Idle)` で待機状態に戻します。
 - この間、CoreS3 の画面表示は `Listening` ではなく `Idle(Server-WWD)` を維持します。
