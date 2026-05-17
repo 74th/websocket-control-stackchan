@@ -3,10 +3,7 @@ from __future__ import annotations
 import asyncio
 import unicodedata
 from logging import getLogger
-from typing import Any
 
-from pydantic import Field
-from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings
 
 from ..speech_recognition.whisper_server import (
@@ -32,14 +29,7 @@ class WhisperServerWakeWordDetectorConfig(BaseSettings):
     min_buffer_seconds: float = 1.0
     interval_seconds: float = 0.5
     timeout_seconds: float = 300.0
-    ignore_detected: str = ""
-
-    def prepare_field_value(
-        self, field_name: str, field: FieldInfo, value: Any, value_is_complex: bool
-    ) -> Any:
-        if field_name == 'keywords':
-            return [x.strip() for x in value.split(',') if x.strip()]
-        return value
+    ignore_phrases: list[str] = []
 
     class Config:
         env_prefix = "STACKCHAN_WWD_WHISPER_SERVER_"
@@ -213,9 +203,11 @@ class WhisperServerWakeWordDetector:
         if not normalized_transcript:
             return False
 
-        if self.config.ignore_detected and self.config.ignore_detected in normalized_transcript:
-            # If the ignore_detected phrase is included in the transcript, it may indicate that the transcription is not accurate or that the model is confused. In this case, we choose to ignore the transcript to avoid false positives.
-            return False
+        for ignore_phrase in self.config.ignore_phrases:
+            if ignore_phrase in normalized_transcript:
+                # If the ignore_detected phrase is included in the transcript, it may indicate that the transcription is not accurate or that the model is confused. In this case, we choose to ignore the transcript to avoid false positives.
+                return False
+
         for keyword in self.config.keywords:
             normalized_keyword = _normalize_text(keyword)
             if normalized_keyword and normalized_keyword in normalized_transcript:
