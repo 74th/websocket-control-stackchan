@@ -1,7 +1,7 @@
 #!/bin/bash
 set -xe
 
-whisper-server \
+/opt/whisper.cpp/build/bin/whisper-server \
     --host 0.0.0.0 \
     --port "8431" \
     --model /opt/whisper.cpp/models/ggml-small.bin \
