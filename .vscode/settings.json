@@ -12,5 +12,7 @@
         "numeric": "cpp",
         "ostream": "cpp",
         "sstream": "cpp"
-    }
+    },
+    "python.analysis.typeCheckingMode": "off",
+    "ty.interpreter": [".venv/bin/python"]
 }
