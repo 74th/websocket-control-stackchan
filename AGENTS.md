@@ -113,7 +113,8 @@
 
 - `example_apps/echo.py`: 音声をそのまま復唱
 - `example_apps/echo_with_move.py`: 復唱 + サーボ動作
-- `example_apps/gemini.py`: Gemini 応答を発話
+- `example_apps/gemini.py`: Geminiで発話
+- `example_apps/openai_compatible.py`: OpenAI互換APIで発話
 
 ## 起動時の目安
 
