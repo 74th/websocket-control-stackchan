@@ -8,9 +8,8 @@ set -xe
     -l ja \
     -nt \
     -sns \
-    --vad \
-    -vm /opt/whisper.cpp/models/ggml-silero-v6.2.0.bin \
     -vt "0.5" \
     -vspd "100" \
     -vsd "500" \
-    -vp "200"
+    -vp "200" \
+    --convert
