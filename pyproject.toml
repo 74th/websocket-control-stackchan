@@ -26,6 +26,9 @@ dev = [
     "ty>=0.0.17",
 ]
 example-gemini = []
+example-openai = [
+    "openai>=1.0.0",
+]
 example-claude-agent-sdk = [
     "claude-agent-sdk>=0.1.39",
 ]
