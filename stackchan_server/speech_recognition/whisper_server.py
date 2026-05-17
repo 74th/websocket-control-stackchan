@@ -43,16 +43,16 @@ class WhisperServerSpeechToText(SpeechRecognizer):
         *,
         config: WhisperServerSpeechToTextConfig | None = None,
     ) -> None:
-        self._conf = config or WhisperServerSpeechToTextConfig()
-        self._server_url = self._conf.url
+        self.config = config or WhisperServerSpeechToTextConfig()
+        self._server_url = self.config.url
 
     async def transcribe(self, pcm_bytes: bytes) -> str:
         rms_level = _pcm_rms_level(pcm_bytes)
-        if rms_level < self._conf.silence_rms_threshold:
+        if rms_level < self.config.silence_rms_threshold:
             logger.info(
                 "Skipping whisper-server transcription because pcm rms %.2f is below silence threshold %.2f",
                 rms_level,
-                self._conf.silence_rms_threshold,
+                self.config.silence_rms_threshold,
             )
             return ""
 
@@ -65,7 +65,7 @@ class WhisperServerSpeechToText(SpeechRecognizer):
         transcript = await asyncio.to_thread(
             self._request_transcript,
             wav_bytes,
-            self._conf.language,
+            self.config.language,
         )
         if transcript:
             logger.info("whisper-server transcript: %s", transcript)
@@ -73,20 +73,20 @@ class WhisperServerSpeechToText(SpeechRecognizer):
 
     def _request_transcript(self, wav_bytes: bytes, language: str) -> str:
         fields = {
-            "response_format": self._conf.response_format,
+            "response_format": self.config.response_format,
         }
 
         normalized_language = language.strip()
         if normalized_language:
             fields["language"] = normalized_language
 
-        if self._conf.prompt:
-            fields["prompt"] = self._conf.prompt
+        if self.config.prompt:
+            fields["prompt"] = self.config.prompt
 
-        if self._conf.model:
-            fields["model"] = self._conf.model
+        if self.config.model:
+            fields["model"] = self.config.model
 
-        if self._conf.detect_language:
+        if self.config.detect_language:
             fields["detect_language"] = "true"
 
         body, content_type = _encode_multipart_formdata(
@@ -102,7 +102,7 @@ class WhisperServerSpeechToText(SpeechRecognizer):
         logger.info("Running whisper-server request: POST %s", self._server_url)
         try:
             with urlopen(
-                request, timeout=self._conf.request_timeout_seconds
+                request, timeout=self.config.request_timeout_seconds
             ) as response:
                 response_body = response.read()
         except HTTPError as exc:
@@ -113,7 +113,7 @@ class WhisperServerSpeechToText(SpeechRecognizer):
         except URLError as exc:
             raise RuntimeError(f"whisper-server request failed: {exc.reason}") from exc
 
-        if self._conf.response_format == "json":
+        if self.config.response_format == "json":
             payload = _load_json_response_bytes(response_body)
             if not isinstance(payload, Mapping):
                 return ""

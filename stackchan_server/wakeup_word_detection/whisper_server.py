@@ -25,7 +25,7 @@ class WakeWordDetectionTimeout(WakeWordDetectionError):
 
 
 class WhisperServerWakeWordDetectorConfig(BaseSettings):
-    keywords: list[str] = Field(default_factory=lambda: ["スタックチャン"])
+    keywords: list[str] = Field(default_factory=lambda: ["ハイスタックチャン"])
     window_seconds: float = 3.0
     interval_seconds: float = 0.5
     timeout_seconds: float = 300.0
@@ -192,6 +192,9 @@ class WhisperServerWakeWordDetector:
         if not normalized_transcript:
             return False
 
+        if self.recognizer.config.prompt in normalized_transcript:
+            # If the prompt is included in the transcript, it may indicate that the transcription is not accurate or that the model is confused. In this case, we choose to ignore the transcript to avoid false positives.
+            return False
         for keyword in self.config.keywords:
             normalized_keyword = _normalize_text(keyword)
             if normalized_keyword and normalized_keyword in normalized_transcript:
