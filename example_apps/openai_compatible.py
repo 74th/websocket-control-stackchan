@@ -5,6 +5,9 @@ from logging import StreamHandler, getLogger
 
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
+from openai.types.chat import (
+    ChatCompletionMessageParam,
+)
 
 from stackchan_server.app import StackChanApp
 from stackchan_server.ws_proxy import (
@@ -39,7 +42,7 @@ async def setup(proxy: WsProxy):
 
 @app.talk_session
 async def talk_session(proxy: WsProxy):
-    messages: list[dict[str, str]] = [
+    messages: list[ChatCompletionMessageParam] = [
         {"role": "system", "content": SYSTEM_PROMPT},
     ]
 
@@ -71,7 +74,7 @@ async def talk_session(proxy: WsProxy):
 
         logger.info("Human: %s", text)
 
-        messages.append({"role": "user", "content": text})
+        messages.append( {"role": "user", "content": text})
 
         # generate response via OpenAI-compatible API (LM Studio)
         resp = await client.chat.completions.create(
@@ -81,7 +84,7 @@ async def talk_session(proxy: WsProxy):
 
         reply = resp.choices[0].message.content or ""
 
-        messages.append({"role": "assistant", "content": reply})
+        messages.append( {"role": "assistant", "content": reply})
 
         # speaking
         logger.info("AI: %s", reply)
