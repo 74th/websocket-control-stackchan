@@ -31,6 +31,7 @@ client = AsyncOpenAI(
 )
 
 MODEL = os.getenv("OPENAI_MODEL", "")
+REASONING_EFFORT = os.getenv("OPENAI_REASONING_EFFORT", "none")
 
 SYSTEM_PROMPT = "あなたは親切な音声アシスタントです。音声で返答するため、マークダウンは記述せず、簡潔に答えてください。だいたい3文程度で答えてください。"
 
@@ -80,6 +81,7 @@ async def talk_session(proxy: WsProxy):
         resp = await client.chat.completions.create(
             model=MODEL,
             messages=messages,
+            reasoning_effort=REASONING_EFFORT,
         )
 
         reply = resp.choices[0].message.content or ""
